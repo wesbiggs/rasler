@@ -7,7 +7,7 @@ RASLer (`rasler`) is the base RASL protocol implementation. Provides content-add
 - **Storage** — SQLite-backed content store with capacity management and pluggable eviction policy (`Store`, `openDb`)
 - **CID & MASL** — content-addressed identifiers (`computeDataCid`, `getRingPosition`) and MASL document encoding for single files and website bundles
 - **Static roots** — serve files from operator-owned directories by CID without copying them into the blob store
-- **RASL routing** — `makeRaslRoutingMiddleware` (307-redirect toward responsible peer), `makeRaslNotFoundHandler`
+- **RASL routing** — `makeRaslNotFoundHandler`
 - **Operator API** — `makeOperatorRouter`: upload, pin, content CRUD, `/status`
 - **Server factory** — `createApp` / `finalizeApp` with OpenAPI overlay merge support
 - **Auth & CORS** — `requireApiSecret`, `makeOperatorCors`

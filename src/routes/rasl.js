@@ -127,32 +127,6 @@ export function makeRaslRouter({ store }) {
   return router;
 }
 
-// Overlay middleware: on miss, redirects toward the responsible node.
-// Falls through (next()) to the 404 terminator when no closer peer exists
-// or hops is exhausted. Preserves the path suffix so path-bearing requests
-// resolve correctly at the target node.
-export function makeRaslRoutingMiddleware({ overlayAdapter }) {
-  function handle(req, res, next) {
-    const { cid } = req.params;
-    const hopsRaw = req.query.hops;
-    const hops = hopsRaw !== undefined ? parseInt(hopsRaw, 10) : 20;
-
-    if (hops === 0) return next();
-    const closer = overlayAdapter.findCloserPeer(cid);
-    if (!closer) return next();
-
-    const pathSuffix = getPathAfterCid(req, cid);
-    return res.redirect(307, `https://${closer.domain}/.well-known/rasl/${cid}${pathSuffix}?hops=${hops - 1}`);
-  }
-
-  const router = Router();
-  router.get('/.well-known/rasl/:cid', handle);
-  router.get('/.well-known/rasl/:cid/*path', handle);
-  router.head('/.well-known/rasl/:cid', handle);
-  router.head('/.well-known/rasl/:cid/*path', handle);
-  return router;
-}
-
 // Terminator: turns a fully-fallthrough RASL request into a 404.
 export function makeRaslNotFoundHandler() {
   const router = Router();
