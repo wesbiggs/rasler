@@ -1,0 +1,651 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "RASL Node Operator API",
+    "version": "0.1.0",
+    "description": "HTTP API for managing a RASL node: uploading and pinning content, inspecting storage, and monitoring node status. All endpoints require the `x-rasl-operator-secret` header."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Local node"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "operatorSecret": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-rasl-operator-secret",
+        "description": "Pre-shared operator secret (API_SECRET env var)"
+      }
+    },
+    "schemas": {
+      "ContentItem": {
+        "type": "object",
+        "properties": {
+          "cid": {
+            "type": "string",
+            "example": "bafkreid7qoywk7hv5udpjlmxqmr4of3d5jx4k5r2kvfm4vs3l4dz3t7ku"
+          },
+          "maslCid": {
+            "type": "string",
+            "nullable": true,
+            "example": "bafyreid7qoywk7hv5udpjlmxqmr4of3d5jx4k5r2kvfm4vs3l4dz3t7ku"
+          },
+          "size": {
+            "type": "integer",
+            "example": 4096
+          },
+          "pinned": {
+            "type": "boolean"
+          },
+          "lastRequested": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Unix timestamp in milliseconds"
+          }
+        }
+      },
+      "UploadResult": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string"
+          },
+          "maslCid": {
+            "type": "string"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "operatorSecret": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Content",
+      "description": "Upload, pin, and manage locally held content"
+    },
+    {
+      "name": "Node",
+      "description": "Node status"
+    }
+  ],
+  "paths": {
+    "/upload": {
+      "post": {
+        "tags": [
+          "Content"
+        ],
+        "summary": "Upload one or more files",
+        "description": "Each file is stored unpinned. Files are either a raw data file (any content type) or a CARv1 bundle (detected by content-type `application/vnd.ipld.car` or a `.car` extension). A raw file gets a single-mode MASL wrapper generated automatically.\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "files"
+                ],
+                "properties": {
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "All files stored successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "uploads": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/UploadResult"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (bad CAR, CID mismatch, no files)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid operator secret"
+          },
+          "507": {
+            "description": "Insufficient storage",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pin": {
+      "post": {
+        "tags": [
+          "Content"
+        ],
+        "summary": "Pin stored CIDs",
+        "description": "Marks CIDs as operator-pinned so they are never evicted. Pinning a MASL CID also pins all its linked data CIDs; pinning a data CID also pins its MASL wrapper.\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "cids"
+                ],
+                "properties": {
+                  "cids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "example": [
+                      "bafyreid7qoywk7hv5udpjlmxqmr4of3d5jx4k5r2kvfm4vs3l4dz3t7ku"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "CIDs pinned (includes cascade pins)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "pinned": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "cids missing or empty",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid operator secret"
+          },
+          "404": {
+            "description": "One or more CIDs not held locally",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pin/{cid}": {
+      "delete": {
+        "tags": [
+          "Content"
+        ],
+        "summary": "Unpin a CID",
+        "description": "Removes the operator pin from a CID, making it eligible for eviction. Unpinning a MASL CID also unpins its linked data CIDs; unpinning a data CID also unpins its MASL wrapper. Returns 200 even if the CID is not held.\n",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Unpinned (or not found)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok",
+                        "not found"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid operator secret"
+          }
+        }
+      }
+    },
+    "/content": {
+      "get": {
+        "tags": [
+          "Content"
+        ],
+        "summary": "List locally held CIDs",
+        "description": "Cursor-based pagination over all CIDs held by this node, ordered by CID.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "Number of items per page"
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exclusive lower-bound CID from the previous page's `nextCursor`"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page of content items",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total": {
+                      "type": "integer",
+                      "description": "Total number of CIDs held (across all pages)"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ContentItem"
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Pass as `cursor` to fetch the next page; null on the last page"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid operator secret"
+          }
+        }
+      }
+    },
+    "/content/{cid}": {
+      "get": {
+        "tags": [
+          "Content"
+        ],
+        "summary": "Get metadata for a single CID",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CID metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid operator secret"
+          },
+          "404": {
+            "description": "CID not held locally",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Content"
+        ],
+        "summary": "Force-remove a CID",
+        "description": "Permanently deletes a CID regardless of pin status. If the CID is a MASL document, all linked data CIDs that are held locally are also deleted. Returns the list of all CIDs actually removed.\n",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CID(s) deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deleted": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid operator secret"
+          },
+          "404": {
+            "description": "CID not held locally",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/static-roots": {
+      "get": {
+        "tags": [
+          "Content"
+        ],
+        "summary": "List configured static roots and their current MASL CIDs",
+        "description": "Returns one entry per directory configured in STATIC_ROOTS. `maslCid` is null if background indexing has not yet completed for that root.\n",
+        "responses": {
+          "200": {
+            "description": "Static root list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "type": "string",
+                        "description": "Configured directory path"
+                      },
+                      "maslCid": {
+                        "type": "string",
+                        "nullable": true,
+                        "description": "Current bundle MASL CID, or null if not yet indexed"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid operator secret"
+          }
+        }
+      }
+    },
+    "/virtual-hosts": {
+      "get": {
+        "tags": [
+          "Content"
+        ],
+        "summary": "List all virtual hosts and their current MASL CIDs",
+        "description": "Returns all virtual hosts: those set via the operator API (`source: runtime`) and those configured in VIRTUAL_HOSTS (`source: static`). Runtime entries take priority in serving. `maslCid` is null only for static entries whose background indexing has not yet completed.\n",
+        "responses": {
+          "200": {
+            "description": "Virtual host list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "hostname": {
+                        "type": "string"
+                      },
+                      "path": {
+                        "type": "string",
+                        "nullable": true,
+                        "description": "Directory path (static entries only)"
+                      },
+                      "maslCid": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "source": {
+                        "type": "string",
+                        "enum": [
+                          "runtime",
+                          "static"
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid operator secret"
+          }
+        }
+      }
+    },
+    "/virtual-hosts/{hostname}": {
+      "put": {
+        "tags": [
+          "Content"
+        ],
+        "summary": "Map a hostname to a bundle MASL CID",
+        "description": "Registers a runtime virtual host mapping. The MASL CID must already be held locally and must be a bundle MASL. The MASL is pinned automatically to prevent eviction. This mapping takes priority over any static-root mapping for the same hostname and persists across restarts.\n",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hostname",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "maslCid"
+                ],
+                "properties": {
+                  "maslCid": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Mapping set",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "hostname": {
+                      "type": "string"
+                    },
+                    "maslCid": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or non-bundle MASL CID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid operator secret"
+          },
+          "404": {
+            "description": "CID not held locally",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Content"
+        ],
+        "summary": "Remove a runtime virtual host mapping",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hostname",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Mapping removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid operator secret"
+          },
+          "404": {
+            "description": "Runtime mapping not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

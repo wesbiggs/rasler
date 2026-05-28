@@ -1,0 +1,40 @@
+{
+  "name": "@crasl/rasler",
+  "version": "0.1.0",
+  "description": "RASLer — RASL protocol node implementation with content-addressed storage and routing",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest --runInBand",
+    "test:unit": "NODE_OPTIONS=--experimental-vm-modules jest test/unit --runInBand",
+    "test:integration": "NODE_OPTIONS=--experimental-vm-modules jest test/integration --runInBand",
+    "generate:openapi": "node scripts/generate-openapi.js",
+    "website-to-car": "node scripts/website-to-car.js"
+  },
+  "dependencies": {
+    "@ipld/car": "5.4.6",
+    "@ipld/dag-cbor": "10.0.1",
+    "express": "5.2.1",
+    "multer": "2.1.1",
+    "multiformats": "14.0.0",
+    "swagger-ui-express": "5.0.1"
+  },
+  "devDependencies": {
+    "@jest/globals": "29.7.0",
+    "jest": "29.7.0",
+    "supertest": "7.2.2",
+    "swagger-jsdoc": "6.2.8"
+  },
+  "jest": {
+    "transform": {},
+    "testEnvironment": "node",
+    "forceExit": true,
+    "testMatch": [
+      "<rootDir>/test/**/*.test.js"
+    ]
+  },
+  "engines": {
+    "node": ">=23.4.0"
+  }
+}
