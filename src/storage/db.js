@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS virtual_hosts (
 
 export function openDb(dataDir) {
   mkdirSync(dataDir, { recursive: true });
-  const db = new DatabaseSync(join(dataDir, 'crasl.db'));
+  const db = new DatabaseSync(join(dataDir, 'rasler.db'));
   db.exec(BASE_SCHEMA);
   try { db.exec('ALTER TABLE content ADD COLUMN source_path TEXT'); } catch { /* already exists */ }
   try { db.exec('ALTER TABLE content ADD COLUMN source_mtime INTEGER'); } catch { /* already exists */ }

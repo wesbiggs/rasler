@@ -12,7 +12,7 @@ import { realpathSync } from 'fs';
 import { sep } from 'path';
 
 // Default eviction policy: oldest unpinned by last_requested (LRU).
-// The overlay (CRASL) supplies a network-aware policy that considers
+// An overlay can supply a network-aware policy that considers
 // replica counts and primary-holder status.
 function defaultFindEvictionCandidate(store) {
   const row = store.db.prepare(`

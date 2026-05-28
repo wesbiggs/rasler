@@ -100,7 +100,7 @@ async function readCar(fileBuffer) {
 }
 
 // Base operator router: content management and node status (base fields).
-// Auth and CORS are applied here, which also protects makeCraslOperatorExtension
+// Auth and CORS are applied here, which also protects any operator extension router
 // routes — Express runs router.use middleware for all requests entering the router
 // even when no route matches, so auth is enforced before the request falls through
 // to the overlay extension.

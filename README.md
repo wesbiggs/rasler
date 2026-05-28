@@ -1,6 +1,6 @@
 # RASLer
 
-RASLer (`@crasl/rasler`) is the base RASL protocol implementation. Provides content-addressed storage, MASL document encoding, RASL content routing, and the operator HTTP API.
+RASLer (`rasler`) is the base RASL protocol implementation. Provides content-addressed storage, MASL document encoding, RASL content routing, and the operator HTTP API.
 
 ## What's included
 
@@ -128,12 +128,12 @@ Each `hostname:path` pair binds an incoming hostname to a directory. The directo
 ## Usage as a library
 
 ```js
-import { openDb } from '@crasl/rasler/src/storage/db.js';
-import { Store } from '@crasl/rasler/src/storage/store.js';
-import { createApp, finalizeApp } from '@crasl/rasler/src/server.js';
-import { makeRaslNotFoundHandler } from '@crasl/rasler/src/routes/rasl.js';
-import { makeOperatorRouter } from '@crasl/rasler/src/routes/operator.js';
-import { indexStaticRoots } from '@crasl/rasler/src/static.js';
+import { openDb } from 'rasler/src/storage/db.js';
+import { Store } from 'rasler/src/storage/store.js';
+import { createApp, finalizeApp } from 'rasler/src/server.js';
+import { makeRaslNotFoundHandler } from 'rasler/src/routes/rasl.js';
+import { makeOperatorRouter } from 'rasler/src/routes/operator.js';
+import { indexStaticRoots } from 'rasler/src/static.js';
 
 const db = openDb('./data');
 const store = new Store(db, './data', 1024 * 1024 * 1024, {

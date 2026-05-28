@@ -87,12 +87,6 @@ A directory is configured as a static root so it auto-updates on re-index. A `PU
 
 ## Operational and network patterns
 
-### Cache node
-
-A node with no direct uploads and no pinned content. Content is fetched from peers (in a CRASL overlay network), served by CID, and evicted by LRU when storage fills. Suitable as a regional edge cache.
-
-**Config:** set `TOTAL_CAPACITY` to the desired cache size; do not pin content; let the eviction policy run. Peer routing is provided by the CRASL overlay, not rasler standalone.
-
 ### Read replica
 
 Content is authored on a primary node, exported as CAR files, and imported and pinned on one or more secondary nodes for redundancy or geographic distribution.

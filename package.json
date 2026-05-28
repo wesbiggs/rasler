@@ -1,5 +1,5 @@
 {
-  "name": "@crasl/rasler",
+  "name": "rasler",
   "version": "0.1.0",
   "description": "RASLer — RASL protocol node implementation with content-addressed storage and routing",
   "type": "module",

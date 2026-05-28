@@ -131,14 +131,14 @@ export function makeRaslRouter({ store }) {
 // Falls through (next()) to the 404 terminator when no closer peer exists
 // or hops is exhausted. Preserves the path suffix so path-bearing requests
 // resolve correctly at the target node.
-export function makeRaslRoutingMiddleware({ craslAdapter }) {
+export function makeRaslRoutingMiddleware({ overlayAdapter }) {
   function handle(req, res, next) {
     const { cid } = req.params;
     const hopsRaw = req.query.hops;
     const hops = hopsRaw !== undefined ? parseInt(hopsRaw, 10) : 20;
 
     if (hops === 0) return next();
-    const closer = craslAdapter.findCloserPeer(cid);
+    const closer = overlayAdapter.findCloserPeer(cid);
     if (!closer) return next();
 
     const pathSuffix = getPathAfterCid(req, cid);

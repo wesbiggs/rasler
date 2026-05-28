@@ -6,7 +6,7 @@ import { openDb } from '../../src/storage/db.js';
 import { Store } from '../../src/storage/store.js';
 
 function makeTestStore(totalCapacity = 10 * 1024 * 1024) {
-  const dataDir = mkdtempSync(join(tmpdir(), 'crasl-test-'));
+  const dataDir = mkdtempSync(join(tmpdir(), 'rasler-test-'));
   const db = openDb(dataDir);
   const store = new Store(db, dataDir, totalCapacity);
   return { store, db, dataDir };
