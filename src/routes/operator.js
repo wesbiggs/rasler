@@ -590,6 +590,9 @@ export function makeOperatorRouter({ store, selfDomain, apiSecret, corsOrigins =
    *                 properties:
    *                   hostname:
    *                     type: string
+   *                   mountPath:
+   *                     type: string
+   *                     description: URL path prefix for this mount point (e.g. / or /docs)
    *                   path:
    *                     type: string
    *                     nullable: true
