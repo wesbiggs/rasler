@@ -8,6 +8,7 @@ import { createSingleMasl, parseMasl, maslLinkedCids, maslIsBundle } from '../ma
 import { realpathSync } from 'fs';
 import { requireApiSecret } from '../middleware/auth.js';
 import { makeOperatorCors } from '../middleware/cors.js';
+import { normalizeMountPath } from '../util/normalizeMountPath.js';
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -104,7 +105,7 @@ async function readCar(fileBuffer) {
 // routes — Express runs router.use middleware for all requests entering the router
 // even when no route matches, so auth is enforced before the request falls through
 // to the overlay extension.
-export function makeOperatorRouter({ store, selfDomain, apiSecret, corsOrigins = [], staticRoots = [], virtualHosts = new Map() }) {
+export function makeOperatorRouter({ store, selfDomain, apiSecret, corsOrigins = [], staticRoots = [], mountPoints = [] }) {
   const router = Router();
   if (corsOrigins.length > 0) router.use(makeOperatorCors(corsOrigins));
   router.use(requireApiSecret(apiSecret));
@@ -574,7 +575,7 @@ export function makeOperatorRouter({ store, selfDomain, apiSecret, corsOrigins =
    *     summary: List all virtual hosts and their current MASL CIDs
    *     description: >
    *       Returns all virtual hosts: those set via the operator API (`source:
-   *       runtime`) and those configured in VIRTUAL_HOSTS (`source: static`).
+   *       runtime`) and those configured in MOUNT_POINTS (`source: static`).
    *       Runtime entries take priority in serving. `maslCid` is null only for
    *       static entries whose background indexing has not yet completed.
    *     responses:
@@ -607,18 +608,19 @@ export function makeOperatorRouter({ store, selfDomain, apiSecret, corsOrigins =
     const seen = new Set();
 
     // Runtime entries first (they take serving priority).
-    for (const [hostname, maslCid] of store.runtimeVirtualHosts) {
-      seen.add(hostname);
-      const configPath = virtualHosts.get(hostname) ?? null;
-      result.push({ hostname, path: configPath, maslCid, source: 'runtime' });
+    for (const mp of store.runtimeMountPoints) {
+      const key = `${mp.hostname}|${mp.prefix}`;
+      seen.add(key);
+      result.push({ hostname: mp.hostname, mountPath: mp.prefix || '/', path: null, maslCid: mp.maslCid, source: 'runtime' });
     }
 
-    // Config-backed entries not overridden by a runtime mapping.
-    for (const [hostname, path] of virtualHosts) {
-      if (seen.has(hostname)) continue;
+    // Config-backed entries not overridden by a runtime mapping at the same (hostname, prefix).
+    for (const mp of mountPoints) {
+      const key = `${mp.hostname}|${mp.prefix}`;
+      if (seen.has(key)) continue;
       let maslCid = null;
-      try { maslCid = store.staticRootMasls.get(realpathSync(path)) ?? null; } catch {}
-      result.push({ hostname, path, maslCid, source: 'static' });
+      try { maslCid = store.staticRootMasls.get(realpathSync(mp.directory)) ?? null; } catch {}
+      result.push({ hostname: mp.hostname, mountPath: mp.prefix || '/', path: mp.directory, maslCid, source: 'static' });
     }
 
     return res.status(200).json(result);
@@ -629,12 +631,12 @@ export function makeOperatorRouter({ store, selfDomain, apiSecret, corsOrigins =
    * /virtual-hosts/{hostname}:
    *   put:
    *     tags: [Content]
-   *     summary: Map a hostname to a bundle MASL CID
+   *     summary: Map a hostname (with optional path prefix) to a bundle MASL CID
    *     description: >
-   *       Registers a runtime virtual host mapping. The MASL CID must already be
+   *       Registers a runtime mount point mapping. The MASL CID must already be
    *       held locally and must be a bundle MASL. The MASL is pinned automatically
    *       to prevent eviction. This mapping takes priority over any static-root
-   *       mapping for the same hostname and persists across restarts.
+   *       mapping for the same (hostname, mountPath) and persists across restarts.
    *     parameters:
    *       - in: path
    *         name: hostname
@@ -651,6 +653,9 @@ export function makeOperatorRouter({ store, selfDomain, apiSecret, corsOrigins =
    *             properties:
    *               maslCid:
    *                 type: string
+   *               mountPath:
+   *                 type: string
+   *                 description: URL path prefix for this mount point (default /)
    *     responses:
    *       '200':
    *         description: Mapping set
@@ -660,6 +665,8 @@ export function makeOperatorRouter({ store, selfDomain, apiSecret, corsOrigins =
    *               type: object
    *               properties:
    *                 hostname:
+   *                   type: string
+   *                 mountPath:
    *                   type: string
    *                 maslCid:
    *                   type: string
@@ -679,13 +686,19 @@ export function makeOperatorRouter({ store, selfDomain, apiSecret, corsOrigins =
    *               $ref: '#/components/schemas/Error'
    *   delete:
    *     tags: [Content]
-   *     summary: Remove a runtime virtual host mapping
+   *     summary: Remove a runtime mount point mapping
    *     parameters:
    *       - in: path
    *         name: hostname
    *         required: true
    *         schema:
    *           type: string
+   *       - in: query
+   *         name: mountPath
+   *         required: false
+   *         schema:
+   *           type: string
+   *         description: URL path prefix to remove (default /)
    *     responses:
    *       '200':
    *         description: Mapping removed
@@ -708,7 +721,8 @@ export function makeOperatorRouter({ store, selfDomain, apiSecret, corsOrigins =
    */
   router.put('/virtual-hosts/:hostname', (req, res) => {
     const { hostname } = req.params;
-    const { maslCid } = req.body ?? {};
+    const { maslCid, mountPath } = req.body ?? {};
+    const prefix = normalizeMountPath(mountPath ?? '/');
     if (!maslCid || typeof maslCid !== 'string') {
       return res.status(400).json({ error: 'maslCid is required' });
     }
@@ -727,16 +741,18 @@ export function makeOperatorRouter({ store, selfDomain, apiSecret, corsOrigins =
       return res.status(400).json({ error: 'maslCid must refer to a bundle MASL' });
     }
     store.setPinned(maslCid, true);
-    store.setVirtualHost(hostname, maslCid);
-    return res.status(200).json({ hostname, maslCid });
+    store.setVirtualHost(hostname, prefix, maslCid);
+    return res.status(200).json({ hostname, mountPath: prefix || '/', maslCid });
   });
 
   router.delete('/virtual-hosts/:hostname', (req, res) => {
     const { hostname } = req.params;
-    if (!store.runtimeVirtualHosts.has(hostname)) {
+    const prefix = normalizeMountPath(req.query.mountPath ?? '/');
+    const exists = store.runtimeMountPoints.some(mp => mp.hostname === hostname && mp.prefix === prefix);
+    if (!exists) {
       return res.status(404).json({ error: 'Runtime virtual host mapping not found' });
     }
-    store.deleteVirtualHost(hostname);
+    store.deleteVirtualHost(hostname, prefix);
     return res.status(200).json({ status: 'ok' });
   });
 

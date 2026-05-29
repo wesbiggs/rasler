@@ -45,7 +45,7 @@ export function createApp({ store, config, openApiOverlays = [] }) {
   app.use(express.json({ limit: '10mb' }));
   app.use(express.static(resolve(__dirname, '..', 'public')));
 
-  app.use(makeVirtualHostRouter({ store, virtualHosts: config.virtualHosts ?? new Map() }));
+  app.use(makeVirtualHostRouter({ store, mountPoints: config.mountPoints ?? [], selfDomain: config.domain }));
 
   app.use(makeRaslRouter({ store }));
 

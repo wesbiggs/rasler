@@ -36,11 +36,12 @@ export class Store {
     });
     // Populated by indexStaticRoot after each root is indexed. Maps realpath → maslCid.
     this.staticRootMasls = new Map();
-    // Runtime virtual host mappings set via operator API. Persisted in SQLite.
-    // Maps hostname → maslCid. Takes priority over staticRootMasls in vhost routing.
-    this.runtimeVirtualHosts = new Map(
-      dbListVirtualHosts(db).map(row => [row.hostname, row.masl_cid])
-    );
+    // Runtime mount point mappings set via operator API. Persisted in SQLite.
+    // Array of {hostname, prefix, maslCid} sorted longest-prefix-first.
+    // Takes priority over staticRootMasls in vhost routing.
+    this.runtimeMountPoints = dbListVirtualHosts(db)
+      .map(row => ({ hostname: row.hostname, prefix: row.mount_path, maslCid: row.masl_cid }))
+      .sort((a, b) => b.prefix.length - a.prefix.length);
   }
 
   putContent(cid, bytes, { maslCid = null, pinned = false } = {}) {
@@ -140,14 +141,20 @@ export class Store {
   // was performed or not needed, false if impossible. The eviction policy is
   // injected via the constructor; replica-row cleanup happens automatically
   // via FK cascade on the replicas table.
-  setVirtualHost(hostname, maslCid) {
-    dbSetVirtualHost(this.db, hostname, maslCid);
-    this.runtimeVirtualHosts.set(hostname, maslCid);
+  setVirtualHost(hostname, prefix, maslCid) {
+    dbSetVirtualHost(this.db, hostname, prefix, maslCid);
+    this.runtimeMountPoints = this.runtimeMountPoints.filter(
+      mp => !(mp.hostname === hostname && mp.prefix === prefix)
+    );
+    this.runtimeMountPoints.push({ hostname, prefix, maslCid });
+    this.runtimeMountPoints.sort((a, b) => b.prefix.length - a.prefix.length);
   }
 
-  deleteVirtualHost(hostname) {
-    dbDeleteVirtualHost(this.db, hostname);
-    this.runtimeVirtualHosts.delete(hostname);
+  deleteVirtualHost(hostname, prefix) {
+    dbDeleteVirtualHost(this.db, hostname, prefix);
+    this.runtimeMountPoints = this.runtimeMountPoints.filter(
+      mp => !(mp.hostname === hostname && mp.prefix === prefix)
+    );
   }
 
   evictIfNeeded(requiredBytes) {

@@ -476,7 +476,7 @@
           "Content"
         ],
         "summary": "List all virtual hosts and their current MASL CIDs",
-        "description": "Returns all virtual hosts: those set via the operator API (`source: runtime`) and those configured in VIRTUAL_HOSTS (`source: static`). Runtime entries take priority in serving. `maslCid` is null only for static entries whose background indexing has not yet completed.\n",
+        "description": "Returns all virtual hosts: those set via the operator API (`source: runtime`) and those configured in MOUNT_POINTS (`source: static`). Runtime entries take priority in serving. `maslCid` is null only for static entries whose background indexing has not yet completed.\n",
         "responses": {
           "200": {
             "description": "Virtual host list",
@@ -489,6 +489,10 @@
                     "properties": {
                       "hostname": {
                         "type": "string"
+                      },
+                      "mountPath": {
+                        "type": "string",
+                        "description": "URL path prefix for this mount point (e.g. / or /docs)"
                       },
                       "path": {
                         "type": "string",
@@ -523,8 +527,8 @@
         "tags": [
           "Content"
         ],
-        "summary": "Map a hostname to a bundle MASL CID",
-        "description": "Registers a runtime virtual host mapping. The MASL CID must already be held locally and must be a bundle MASL. The MASL is pinned automatically to prevent eviction. This mapping takes priority over any static-root mapping for the same hostname and persists across restarts.\n",
+        "summary": "Map a hostname (with optional path prefix) to a bundle MASL CID",
+        "description": "Registers a runtime mount point mapping. The MASL CID must already be held locally and must be a bundle MASL. The MASL is pinned automatically to prevent eviction. This mapping takes priority over any static-root mapping for the same (hostname, mountPath) and persists across restarts.\n",
         "parameters": [
           {
             "in": "path",
@@ -547,6 +551,10 @@
                 "properties": {
                   "maslCid": {
                     "type": "string"
+                  },
+                  "mountPath": {
+                    "type": "string",
+                    "description": "URL path prefix for this mount point (default /)"
                   }
                 }
               }
@@ -562,6 +570,9 @@
                   "type": "object",
                   "properties": {
                     "hostname": {
+                      "type": "string"
+                    },
+                    "mountPath": {
                       "type": "string"
                     },
                     "maslCid": {
@@ -601,7 +612,7 @@
         "tags": [
           "Content"
         ],
-        "summary": "Remove a runtime virtual host mapping",
+        "summary": "Remove a runtime mount point mapping",
         "parameters": [
           {
             "in": "path",
@@ -610,6 +621,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "mountPath",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "URL path prefix to remove (default /)"
           }
         ],
         "responses": {

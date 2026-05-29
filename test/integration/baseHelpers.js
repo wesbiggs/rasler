@@ -14,7 +14,7 @@ export function makeBaseTestApp({
   operatorCorsOrigins = [],
   operatorApiPathPrefix = '',
   staticRoots = [],
-  virtualHosts = new Map(),
+  mountPoints = [],
 } = {}) {
   const dataDir = mkdtempSync(join(tmpdir(), 'base-int-'));
   const db = openDb(dataDir);
@@ -24,14 +24,14 @@ export function makeBaseTestApp({
     domain, port: 0, apiSecret, totalCapacity, dataDir,
     operatorCorsOrigins, operatorApiPathPrefix,
     swaggerUi: false,
-    virtualHosts,
+    mountPoints,
   };
 
   const app = createApp({ store, config });
   const prefix = operatorApiPathPrefix || '/';
 
   app.use(makeRaslNotFoundHandler());
-  app.use(prefix, makeOperatorRouter({ store, selfDomain: domain, apiSecret, corsOrigins: operatorCorsOrigins, staticRoots, virtualHosts }));
+  app.use(prefix, makeOperatorRouter({ store, selfDomain: domain, apiSecret, corsOrigins: operatorCorsOrigins, staticRoots, mountPoints }));
 
   finalizeApp(app, config);
 

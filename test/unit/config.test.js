@@ -1,5 +1,6 @@
 import { describe, it, expect } from '@jest/globals';
 import { parseSize } from '../../src/util/parseSize.js';
+import { normalizeMountPath } from '../../src/util/normalizeMountPath.js';
 
 describe('parseSize', () => {
   it('parses plain byte counts', () => {
@@ -59,5 +60,37 @@ describe('parseSize', () => {
     expect(() => parseSize('')).toThrow();
     expect(() => parseSize('1X')).toThrow();
     expect(() => parseSize('1GG')).toThrow();
+  });
+});
+
+describe('normalizeMountPath', () => {
+  it('returns empty string for root variants', () => {
+    expect(normalizeMountPath('/')).toBe('');
+    expect(normalizeMountPath('')).toBe('');
+  });
+
+  it('returns empty string for null/undefined', () => {
+    expect(normalizeMountPath(null)).toBe('');
+    expect(normalizeMountPath(undefined)).toBe('');
+  });
+
+  it('preserves a clean path prefix', () => {
+    expect(normalizeMountPath('/docs')).toBe('/docs');
+    expect(normalizeMountPath('/a/b/c')).toBe('/a/b/c');
+  });
+
+  it('adds a leading slash when missing', () => {
+    expect(normalizeMountPath('docs')).toBe('/docs');
+    expect(normalizeMountPath('app/v2')).toBe('/app/v2');
+  });
+
+  it('strips trailing slashes', () => {
+    expect(normalizeMountPath('/docs/')).toBe('/docs');
+    expect(normalizeMountPath('/docs///')).toBe('/docs');
+  });
+
+  it('trims surrounding whitespace', () => {
+    expect(normalizeMountPath('  /docs  ')).toBe('/docs');
+    expect(normalizeMountPath('  /  ')).toBe('');
   });
 });

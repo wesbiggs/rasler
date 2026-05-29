@@ -1,16 +1,9 @@
 import { resolve } from 'path';
 import { parseSize } from './util/parseSize.js';
 import { required, optional } from './util/env.js';
+import { normalizeMountPath } from './util/normalizeMountPath.js';
 
-export { parseSize };
-
-function normalizeMountPath(raw) {
-  let p = (raw ?? '').trim();
-  if (!p) return '';
-  if (!p.startsWith('/')) p = '/' + p;
-  while (p.length > 1 && p.endsWith('/')) p = p.slice(0, -1);
-  return p === '/' ? '' : p;
-}
+export { parseSize, normalizeMountPath };
 
 const config = Object.freeze({
   domain: required('DOMAIN'),
@@ -24,32 +17,45 @@ const config = Object.freeze({
     .split(',')
     .map(s => s.trim())
     .filter(Boolean),
-  // Maps hostname → directory path for virtual host serving. Paths are
-  // automatically included in staticRoots — no need to list them twice.
-  // Format: "example.com:/var/www/html,other.com:/var/www/other"
-  virtualHosts: (() => {
-    const map = new Map();
-    for (const entry of optional('VIRTUAL_HOSTS', '').split(',').map(s => s.trim()).filter(Boolean)) {
+  // Array of mount point configs for virtual host serving. Each entry maps a
+  // hostname (with optional URL path prefix) to a local directory.
+  // Format: "hostname[/prefix]:directory" — e.g.:
+  //   "example.com:/var/www/html,example.com/docs:/var/www/docs"
+  // Entries are sorted longest-prefix-first so more specific mounts win.
+  mountPoints: (() => {
+    const points = [];
+    for (const entry of optional('MOUNT_POINTS', '').split(',').map(s => s.trim()).filter(Boolean)) {
       const idx = entry.indexOf(':');
       if (idx < 1) continue;
-      const host = entry.slice(0, idx).trim();
-      const path = resolve(entry.slice(idx + 1).trim());
-      if (host && path) map.set(host, path);
+      const hostWithPrefix = entry.slice(0, idx).trim();
+      const directory = resolve(entry.slice(idx + 1).trim());
+      if (!hostWithPrefix || !directory) continue;
+      const slashIdx = hostWithPrefix.indexOf('/');
+      let hostname, prefix;
+      if (slashIdx >= 0) {
+        hostname = hostWithPrefix.slice(0, slashIdx);
+        prefix = normalizeMountPath(hostWithPrefix.slice(slashIdx));
+      } else {
+        hostname = hostWithPrefix;
+        prefix = '';
+      }
+      if (hostname) points.push({ hostname, prefix, directory });
     }
-    return map;
+    points.sort((a, b) => b.prefix.length - a.prefix.length);
+    return points;
   })(),
   // Comma-separated list of absolute directory paths to index as static RASL
   // roots at startup. Files are served by CID without being copied to the blob
   // store. Paths must be pre-approved here; no runtime API can add new roots.
-  // Paths listed in VIRTUAL_HOSTS are automatically included.
+  // Paths listed in MOUNT_POINTS are automatically included.
   staticRoots: (() => {
     const explicit = optional('STATIC_ROOTS', '')
       .split(',').map(s => resolve(s.trim())).filter(Boolean);
-    const fromVhosts = optional('VIRTUAL_HOSTS', '')
+    const fromMounts = optional('MOUNT_POINTS', '')
       .split(',').map(s => s.trim()).filter(Boolean)
       .map(entry => { const idx = entry.indexOf(':'); return idx > 0 ? resolve(entry.slice(idx + 1).trim()) : null; })
       .filter(Boolean);
-    return [...new Set([...explicit, ...fromVhosts])];
+    return [...new Set([...explicit, ...fromMounts])];
   })(),
   // Maximum number of MASL versions to keep pinned per static root (including
   // the current one). Older entries are unpinned and become eligible for LRU

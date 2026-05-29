@@ -13,8 +13,10 @@ CREATE TABLE IF NOT EXISTS content (
   source_mtime INTEGER
 );
 CREATE TABLE IF NOT EXISTS virtual_hosts (
-  hostname TEXT PRIMARY KEY,
-  masl_cid TEXT NOT NULL
+  hostname TEXT NOT NULL,
+  mount_path TEXT NOT NULL DEFAULT '',
+  masl_cid TEXT NOT NULL,
+  PRIMARY KEY (hostname, mount_path)
 );
 `;
 
@@ -22,9 +24,6 @@ export function openDb(dataDir) {
   mkdirSync(dataDir, { recursive: true });
   const db = new DatabaseSync(join(dataDir, 'rasler.db'));
   db.exec(BASE_SCHEMA);
-  try { db.exec('ALTER TABLE content ADD COLUMN source_path TEXT'); } catch { /* already exists */ }
-  try { db.exec('ALTER TABLE content ADD COLUMN source_mtime INTEGER'); } catch { /* already exists */ }
-  // virtual_hosts table added in BASE_SCHEMA; IF NOT EXISTS handles existing DBs.
   return db;
 }
 
@@ -118,17 +117,17 @@ export function dbCountPinned(db) {
 
 // ---- Virtual hosts ----
 
-export function dbSetVirtualHost(db, hostname, maslCid) {
+export function dbSetVirtualHost(db, hostname, mountPath, maslCid) {
   db.prepare(`
-    INSERT INTO virtual_hosts (hostname, masl_cid) VALUES (?, ?)
-    ON CONFLICT(hostname) DO UPDATE SET masl_cid = excluded.masl_cid
-  `).run(hostname, maslCid);
+    INSERT INTO virtual_hosts (hostname, mount_path, masl_cid) VALUES (?, ?, ?)
+    ON CONFLICT(hostname, mount_path) DO UPDATE SET masl_cid = excluded.masl_cid
+  `).run(hostname, mountPath, maslCid);
 }
 
-export function dbDeleteVirtualHost(db, hostname) {
-  db.prepare('DELETE FROM virtual_hosts WHERE hostname = ?').run(hostname);
+export function dbDeleteVirtualHost(db, hostname, mountPath) {
+  db.prepare('DELETE FROM virtual_hosts WHERE hostname = ? AND mount_path = ?').run(hostname, mountPath);
 }
 
 export function dbListVirtualHosts(db) {
-  return db.prepare('SELECT hostname, masl_cid FROM virtual_hosts').all();
+  return db.prepare('SELECT hostname, mount_path, masl_cid FROM virtual_hosts').all();
 }

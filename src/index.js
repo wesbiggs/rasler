@@ -30,7 +30,7 @@ function main() {
     apiSecret: config.apiSecret,
     corsOrigins: config.operatorCorsOrigins,
     staticRoots: config.staticRoots,
-    virtualHosts: config.virtualHosts,
+    mountPoints: config.mountPoints,
   }));
 
   finalizeApp(app, config);
