@@ -569,7 +569,7 @@ export function makeOperatorRouter({ store, selfDomain, apiSecret, corsOrigins =
 
   /**
    * @openapi
-   * /virtual-hosts:
+   * /mount-points:
    *   get:
    *     tags: [Content]
    *     summary: List all virtual hosts and their current MASL CIDs
@@ -606,7 +606,7 @@ export function makeOperatorRouter({ store, selfDomain, apiSecret, corsOrigins =
    *       '401':
    *         description: Missing or invalid operator secret
    */
-  router.get('/virtual-hosts', (req, res) => {
+  router.get('/mount-points', (req, res) => {
     const result = [];
     const seen = new Set();
 
@@ -631,7 +631,7 @@ export function makeOperatorRouter({ store, selfDomain, apiSecret, corsOrigins =
 
   /**
    * @openapi
-   * /virtual-hosts/{hostname}:
+   * /mount-points/{hostname}:
    *   put:
    *     tags: [Content]
    *     summary: Map a hostname (with optional path prefix) to a bundle MASL CID
@@ -722,7 +722,7 @@ export function makeOperatorRouter({ store, selfDomain, apiSecret, corsOrigins =
    *             schema:
    *               $ref: '#/components/schemas/Error'
    */
-  router.put('/virtual-hosts/:hostname', (req, res) => {
+  router.put('/mount-points/:hostname', (req, res) => {
     const { hostname } = req.params;
     const { maslCid, mountPath } = req.body ?? {};
     const prefix = normalizeMountPath(mountPath ?? '/');
@@ -748,7 +748,7 @@ export function makeOperatorRouter({ store, selfDomain, apiSecret, corsOrigins =
     return res.status(200).json({ hostname, mountPath: prefix || '/', maslCid });
   });
 
-  router.delete('/virtual-hosts/:hostname', (req, res) => {
+  router.delete('/mount-points/:hostname', (req, res) => {
     const { hostname } = req.params;
     const prefix = normalizeMountPath(req.query.mountPath ?? '/');
     const exists = store.runtimeMountPoints.some(mp => mp.hostname === hostname && mp.prefix === prefix);

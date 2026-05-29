@@ -21,7 +21,7 @@ function findMountPoint(mountPoints, hostname, path) {
 //
 // The MASL CID is read from store.staticRootMasls on every request, so it
 // reflects the current indexed version automatically after any re-index.
-export function makeVirtualHostRouter({ store, mountPoints, selfDomain }) {
+export function makeMountPointRouter({ store, mountPoints, selfDomain }) {
   const router = Router();
 
   router.use((req, res, next) => {
@@ -45,7 +45,7 @@ export function makeVirtualHostRouter({ store, mountPoints, selfDomain }) {
       try { realRoot = realpathSync(staticMp.directory); } catch { return next(); }
 
       maslCid = store.staticRootMasls.get(realRoot) ?? null;
-      if (!maslCid) return res.status(503).json({ error: 'Virtual host not yet indexed' });
+      if (!maslCid) return res.status(503).json({ error: 'Mount point not yet indexed' });
 
       maslPath = staticMp.prefix ? req.path.slice(staticMp.prefix.length) || '/' : req.path;
     }

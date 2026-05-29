@@ -1,42 +1,38 @@
 # RASLer
 
-RASLer (`rasler`) is the base RASL protocol implementation. Provides content-addressed storage, MASL document encoding, RASL content routing, and the operator HTTP API.
+RASLer (`rasler`) implements [RASL](https://dasl.ing/rasl.html)'s well-known endpoint, backed by content-addressed storage, MASL document encoding, and including a HTTP-based operator API.
 
 ## What's included
 
 - **Storage** — SQLite-backed content store with capacity management and pluggable eviction policy (`Store`, `openDb`)
-- **CID & MASL** — content-addressed identifiers (`computeDataCid`, `getRingPosition`) and MASL document encoding for single files and website bundles
+- **CID & MASL** — content-addressed identifiers and MASL document encoding for single files and website bundles
 - **Static roots** — serve files from operator-owned directories by CID without copying them into the blob store
-- **RASL routing** — `makeRaslNotFoundHandler`
-- **Operator API** — `makeOperatorRouter`: upload, pin, content CRUD, `/status`
-- **Server factory** — `createApp` / `finalizeApp` with OpenAPI overlay merge support
-- **Auth & CORS** — `requireApiSecret`, `makeOperatorCors`
+- **Operator API** — upload, pin, content CRUD, mount points, status, etc.
+- **Server factory** — compose your own server including RASL functionality
 
-## Running as a standalone node
+## Quick start
 
 ```bash
-cd packages/rasler
+npm install
 cp .env.example .env   # set DOMAIN and API_SECRET
-pnpm start
+npm start
 ```
-
-Content not held locally returns 404. There is no peer routing, gossip, or replication.
 
 ## Configuration
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `DOMAIN` | Yes | — | This node's public domain name (e.g. `node1.example.com`) |
-| `API_SECRET` | Yes | — | Pre-shared secret sent as `x-rasl-operator-secret` header |
+| `API_SECRET` | Yes | — | Pre-shared secret to send as `x-rasl-operator-secret` header |
 | `PORT` | No | `3000` | HTTP listen port |
 | `DATA_DIR` | No | `./data` | Directory for the SQLite database and content blobs |
 | `TOTAL_CAPACITY` | No | `1G` | Storage budget (`200M`, `1G`, `2GB`, plain bytes) |
-| `SWAGGER_UI` | No | `false` | Set `true` to enable interactive API docs at `/api-docs` |
 | `OPERATOR_API_PATH_PREFIX` | No | — | Mount operator API under a path prefix (e.g. `/admin`) |
-| `OPERATOR_CORS_ORIGINS` | No | — | Comma-separated origins allowed cross-origin, or `*` |
+| `OPERATOR_CORS_ORIGINS` | No | — | Comma-separated origins allowed cross-origin |
+| `SWAGGER_UI` | No | `false` | Set `true` to enable interactive API docs at `<operator-api-path-prefix>/api-docs` |
 | `STATIC_ROOTS` | No | — | Comma-separated directory paths to serve as static RASL roots (see below) |
 | `STATIC_MAX_HISTORY` | No | — | Maximum pinned MASL versions per static root; older versions are unpinned for LRU eviction |
-| `VIRTUAL_HOSTS` | No | — | Comma-separated `hostname:path` pairs for virtual host serving (see below) |
+| `MOUNT_POINTS` | No | — | Comma-separated mount point definitions mapping `hostname[/prefix]:directory` (see below) |
 
 ## Static roots
 
@@ -67,22 +63,22 @@ Each time a root is re-indexed, a new bundle MASL is generated that links to the
 
 MIME types are inferred from file extensions. Supported types include `text/html`, `text/css`, `application/javascript`, `application/json`, common image and font formats, `video/mp4`, `video/webm`, and `application/pdf`. Unknown extensions are served as `application/octet-stream`.
 
-## Virtual hosts
+## Mount points
 
-Virtual hosts map the HTTP `Host:` header to a static root directory, letting the node serve a website at a plain URL (e.g. `https://example.com/about.html`) without nginx or another reverse proxy.
+Mount points map the HTTP `Host:` header (and an optional URL path prefix) to a static root directory, letting the node serve a website at a plain URL (e.g. `https://example.com/about.html`) without nginx or another reverse proxy.
 
 ### Configuration
 
 ```
-VIRTUAL_HOSTS=example.com:/var/www/html,docs.example.com:/var/www/docs
+MOUNT_POINTS=example.com:/var/www/html,example.com/docs:/var/www/docs,docs.example.com:/var/www/docs
 ```
 
-Each `hostname:path` pair binds an incoming hostname to a directory. The directory is automatically added to `STATIC_ROOTS` — no need to list it twice. On every request the current bundle MASL for that root is read from memory, so the served content updates automatically after a re-index without a server restart.
+Each entry maps a hostname with an optional URL path prefix to a directory. The directory is automatically added to `STATIC_ROOTS` — no need to list it twice. More specific (longer) prefixes take priority. On every request the current bundle MASL for that root is read from memory, so the served content updates automatically after a re-index without a server restart.
 
 ### Request flow
 
-1. The `Host:` header is matched against configured hostnames.
-2. The request path is resolved against the current bundle MASL for that root.
+1. The `Host:` header is matched against configured hostnames; the URL path prefix is matched to select the most specific mount point.
+2. The path prefix is stripped and the remaining path is resolved against the current bundle MASL for that root.
 3. Bytes are streamed directly from disk (the same static-root pipeline).
 4. `/.well-known/rasl/...` paths always pass through to the RASL router unchanged.
 5. If the root has not yet been indexed (startup window), the server returns `503`.
@@ -91,13 +87,13 @@ Each `hostname:path` pair binds an incoming hostname to a directory. The directo
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/virtual-hosts` | List all virtual hosts (config and runtime), their paths, and current MASL CIDs |
-| `PUT` | `/virtual-hosts/:hostname` | Map a hostname to any held bundle MASL CID (persisted, overrides static mapping) |
-| `DELETE` | `/virtual-hosts/:hostname` | Remove a runtime mapping |
+| `GET` | `/mount-points` | List all mount points (config and runtime) with their paths and current MASL CIDs |
+| `PUT` | `/mount-points/:hostname` | Map a hostname (with optional `mountPath`) to a held bundle MASL CID (persisted, overrides static mapping) |
+| `DELETE` | `/mount-points/:hostname` | Remove a runtime mount point mapping (use `?mountPath=` for non-root prefixes) |
 
-`PUT /virtual-hosts/:hostname` accepts `{ "maslCid": "bafy..." }`. The CID must already be held locally and must be a bundle MASL; it is pinned automatically to prevent eviction. The mapping survives server restarts (stored in SQLite). It takes priority over any same-hostname entry in `VIRTUAL_HOSTS`.
+`PUT /mount-points/:hostname` accepts `{ "maslCid": "bafy...", "mountPath": "/docs" }`. `mountPath` is optional and defaults to `/`. The CID must already be held locally and must be a bundle MASL; it is pinned automatically to prevent eviction. The mapping survives server restarts (stored in SQLite). It takes priority over any same (hostname, mountPath) entry in `MOUNT_POINTS`.
 
-`GET /virtual-hosts` returns a `source` field (`"runtime"` or `"static"`) for each entry. Runtime entries appear first.
+`GET /mount-points` returns a `source` field (`"runtime"` or `"static"`) and a `mountPath` field for each entry. Runtime entries appear first.
 
 ## API
 
@@ -106,9 +102,9 @@ Each `hostname:path` pair binds an incoming hostname to a directory. The directo
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/static-roots` | List configured static roots and their current MASL CIDs |
-| `GET` | `/virtual-hosts` | List all virtual hosts (config and runtime) with their MASL CIDs |
-| `PUT` | `/virtual-hosts/:hostname` | Map a hostname to a held bundle MASL CID (runtime, persisted) |
-| `DELETE` | `/virtual-hosts/:hostname` | Remove a runtime virtual host mapping |
+| `GET` | `/mount-points` | List all mount points (config and runtime) with their MASL CIDs |
+| `PUT` | `/mount-points/:hostname` | Map a hostname (with optional mountPath) to a held bundle MASL CID (runtime, persisted) |
+| `DELETE` | `/mount-points/:hostname` | Remove a runtime mount point mapping |
 | `POST` | `/upload` | Upload files (multipart or CAR) |
 | `POST` | `/pin` | Pin CIDs |
 | `DELETE` | `/pin/:cid` | Unpin a CID |
@@ -169,22 +165,22 @@ app.listen(config.port);
 
 ```bash
 # Run the node
-pnpm start
+npm start
 
 # Run tests
-pnpm test
+npm test
 
 # Regenerate openapi.json from JSDoc in src/routes/operator.js
-pnpm generate:openapi
+npm generate:openapi
 
-# Build a website CAR file (MASL bundle)
-pnpm website-to-car <input-dir> [output.car]
+# Build a website CAR file (MASL bundle) to upload
+npm website-to-car <input-dir> [output.car]
 ```
 
 ## OpenAPI
 
-`openapi.json` documents the operator API (`/upload`, `/pin`, `/pin/:cid`, `/content`, `/content/:cid`, `/status`). Regenerate after changing route JSDoc:
+`openapi.json` documents the operator API in detail and is used by the Swagger UI (if enabled). Regenerate after changing route JSDoc:
 
 ```bash
-pnpm generate:openapi
+npm generate:openapi
 ```

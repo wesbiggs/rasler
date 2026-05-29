@@ -470,7 +470,7 @@
         }
       }
     },
-    "/virtual-hosts": {
+    "/mount-points": {
       "get": {
         "tags": [
           "Content"
@@ -522,7 +522,7 @@
         }
       }
     },
-    "/virtual-hosts/{hostname}": {
+    "/mount-points/{hostname}": {
       "put": {
         "tags": [
           "Content"

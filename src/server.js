@@ -5,7 +5,7 @@ import express from 'express';
 import swaggerUi from 'swagger-ui-express';
 import { makeRaslRouter } from './routes/rasl.js';
 import { makeOperatorStatusTerminator } from './routes/operator.js';
-import { makeVirtualHostRouter } from './routes/vhost.js';
+import { makeMountPointRouter } from './routes/mountPoints.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -45,7 +45,7 @@ export function createApp({ store, config, openApiOverlays = [] }) {
   app.use(express.json({ limit: '10mb' }));
   app.use(express.static(resolve(__dirname, '..', 'public')));
 
-  app.use(makeVirtualHostRouter({ store, mountPoints: config.mountPoints ?? [], selfDomain: config.domain }));
+  app.use(makeMountPointRouter({ store, mountPoints: config.mountPoints ?? [], selfDomain: config.domain }));
 
   app.use(makeRaslRouter({ store }));
 

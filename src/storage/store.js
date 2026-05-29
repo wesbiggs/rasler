@@ -38,7 +38,7 @@ export class Store {
     this.staticRootMasls = new Map();
     // Runtime mount point mappings set via operator API. Persisted in SQLite.
     // Array of {hostname, prefix, maslCid} sorted longest-prefix-first.
-    // Takes priority over staticRootMasls in vhost routing.
+    // Takes priority over staticRootMasls in mount-point routing.
     this.runtimeMountPoints = dbListVirtualHosts(db)
       .map(row => ({ hostname: row.hostname, prefix: row.mount_path, maslCid: row.masl_cid }))
       .sort((a, b) => b.prefix.length - a.prefix.length);
