@@ -417,55 +417,55 @@ describe('RASL routes', () => {
   // ── Virtual host routing ───────────────────────────────────────────────────
   // Host: header mapped to a static root's MASL bundle.
 
-  describe('virtual host routing', () => {
-    let vhostDir, vhostApp, vhostStore, vhostCleanup;
-    const vhostName = 'mysite.example.com';
+  describe('mount point routing', () => {
+    let mpDir, mpApp, mpStore, mpCleanup;
+    const mpHostname = 'mysite.example.com';
 
     beforeEach(async () => {
-      vhostDir = mkdtempSync(join(tmpdir(), 'rasl-vhost-'));
-      mkdirSync(join(vhostDir, 'sub'), { recursive: true });
-      writeFileSync(join(vhostDir, 'index.html'), '<html>home</html>');
-      writeFileSync(join(vhostDir, 'about.html'), '<html>about</html>');
+      mpDir = mkdtempSync(join(tmpdir(), 'rasl-mp-'));
+      mkdirSync(join(mpDir, 'sub'), { recursive: true });
+      writeFileSync(join(mpDir, 'index.html'), '<html>home</html>');
+      writeFileSync(join(mpDir, 'about.html'), '<html>about</html>');
 
-      const mountPoints = [{ hostname: vhostName, prefix: '', directory: vhostDir }];
-      ({ app: vhostApp, store: vhostStore, cleanup: vhostCleanup } =
-        makeBaseTestApp({ staticRoots: [vhostDir], mountPoints }));
-      await indexStaticRoot(vhostDir, vhostStore);
+      const mountPoints = [{ hostname: mpHostname, prefix: '', directory: mpDir }];
+      ({ app: mpApp, store: mpStore, cleanup: mpCleanup } =
+        makeBaseTestApp({ staticRoots: [mpDir], mountPoints }));
+      await indexStaticRoot(mpDir, mpStore);
     });
 
     afterEach(() => {
-      vhostCleanup();
-      rmSync(vhostDir, { recursive: true, force: true });
+      mpCleanup();
+      rmSync(mpDir, { recursive: true, force: true });
     });
 
     it('serves index.html at / via Host header', async () => {
-      const res = await request(vhostApp)
+      const res = await request(mpApp)
         .get('/')
-        .set('Host', vhostName);
+        .set('Host', mpHostname);
       expect(res.status).toBe(200);
       expect(res.headers['content-type']).toMatch(/text\/html/);
       expect(res.text).toBe('<html>home</html>');
     });
 
     it('resolves a non-root path via Host header', async () => {
-      const res = await request(vhostApp)
+      const res = await request(mpApp)
         .get('/about.html')
-        .set('Host', vhostName);
+        .set('Host', mpHostname);
       expect(res.status).toBe(200);
       expect(res.headers['content-type']).toMatch(/text\/html/);
       expect(res.text).toBe('<html>about</html>');
     });
 
     it('returns 404 for a path not in the bundle', async () => {
-      const res = await request(vhostApp)
+      const res = await request(mpApp)
         .get('/missing.txt')
-        .set('Host', vhostName);
+        .set('Host', mpHostname);
       expect(res.status).toBe(404);
     });
 
     it('unknown hostname falls through: RASL path returns 404 from RASL handler', async () => {
       const fakeCid = await computeDataCid(Buffer.from('unknown'));
-      const res = await request(vhostApp)
+      const res = await request(mpApp)
         .get(`/.well-known/rasl/${fakeCid}`)
         .set('Host', 'other.example.com');
       // Mount-point router skips unknown hostname; RASL not-found handler returns 404.
@@ -475,18 +475,18 @@ describe('RASL routes', () => {
     it('RASL retrieval paths are not intercepted by the mount-point router', async () => {
       const bytes = Buffer.from('<html>home</html>');
       const cid = await computeDataCid(bytes);
-      vhostStore.putContent(cid, bytes);
+      mpStore.putContent(cid, bytes);
 
-      const res = await request(vhostApp)
+      const res = await request(mpApp)
         .get(`/.well-known/rasl/${cid}`)
-        .set('Host', vhostName);
+        .set('Host', mpHostname);
       // RASL router handles it, not the mount-point router
       expect(res.status).toBe(200);
       expect(res.headers['content-type']).toMatch(/octet-stream/);
     });
 
     it('returns 503 before indexing is complete', async () => {
-      const newDir = mkdtempSync(join(tmpdir(), 'rasl-vhost-pre-'));
+      const newDir = mkdtempSync(join(tmpdir(), 'rasl-mp-pre-'));
       writeFileSync(join(newDir, 'index.html'), '<html>x</html>');
       try {
         const mp = [{ hostname: 'preindex.example.com', prefix: '', directory: newDir }];
@@ -503,20 +503,20 @@ describe('RASL routes', () => {
 
     it('mount-point MASL updates automatically after re-index', async () => {
       // Modify a file and re-index — the mount point should serve the new content.
-      writeFileSync(join(vhostDir, 'index.html'), '<html>updated</html>');
-      await indexStaticRoot(vhostDir, vhostStore);
+      writeFileSync(join(mpDir, 'index.html'), '<html>updated</html>');
+      await indexStaticRoot(mpDir, mpStore);
 
-      const res = await request(vhostApp)
+      const res = await request(mpApp)
         .get('/')
-        .set('Host', vhostName);
+        .set('Host', mpHostname);
       expect(res.status).toBe(200);
       expect(res.text).toBe('<html>updated</html>');
     });
 
     it('sets Link rel=duplicate header pointing to the canonical RASL URL', async () => {
-      const res = await request(vhostApp)
+      const res = await request(mpApp)
         .get('/index.html')
-        .set('Host', vhostName);
+        .set('Host', mpHostname);
       expect(res.status).toBe(200);
       const link = res.headers['link'];
       expect(link).toBeDefined();
@@ -528,28 +528,28 @@ describe('RASL routes', () => {
     it('sets unencoded-digest header', async () => {
       const bytes = Buffer.from('<html>home</html>');
       const cid = await computeDataCid(bytes);
-      const res = await request(vhostApp)
+      const res = await request(mpApp)
         .get('/')
-        .set('Host', vhostName);
+        .set('Host', mpHostname);
       expect(res.status).toBe(200);
       expect(res.headers['unencoded-digest']).toBe(cidToUnencodedDigest(cid));
     });
 
     it('GET /mount-points returns hostname, mountPath, path, maslCid, and source=static', async () => {
-      const res = await request(vhostApp)
+      const res = await request(mpApp)
         .get('/mount-points')
         .set('x-rasl-operator-secret', 'test-secret');
       expect(res.status).toBe(200);
       expect(res.body).toHaveLength(1);
-      expect(res.body[0].hostname).toBe(vhostName);
+      expect(res.body[0].hostname).toBe(mpHostname);
       expect(res.body[0].mountPath).toBe('/');
-      expect(res.body[0].path).toBe(vhostDir);
+      expect(res.body[0].path).toBe(mpDir);
       expect(res.body[0].maslCid).toMatch(/^bafy/);
       expect(res.body[0].source).toBe('static');
     });
 
     it('GET /mount-points returns null maslCid before indexing', async () => {
-      const newDir = mkdtempSync(join(tmpdir(), 'rasl-vhost-pre2-'));
+      const newDir = mkdtempSync(join(tmpdir(), 'rasl-mp-pre2-'));
       writeFileSync(join(newDir, 'index.html'), '<html>x</html>');
       try {
         const mp = [{ hostname: 'preindex2.example.com', prefix: '', directory: newDir }];
