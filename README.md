@@ -109,8 +109,8 @@ Each entry maps a hostname with an optional URL path prefix to a directory. The 
 | `DELETE` | `/content/:cid` | Evict a CID |
 | `GET` | `/static-roots` | List configured static roots and their current MASL CIDs |
 | `GET` | `/mount-points` | List all mount points (config and runtime) with their MASL CIDs |
-| `PUT` | `/mount-points/:hostname` | Map a hostname (with optional path prefix) to a held bundle MASL CID (runtime, persisted) |
-| `DELETE` | `/mount-points/:hostname` | Remove a runtime mount point mapping |
+| `PUT` | `/mount-points/:hostname[/:prefix]` | Map a hostname (with optional path prefix) to a held bundle MASL CID (runtime, persisted) |
+| `DELETE` | `/mount-points/:hostname[/:prefix]` | Remove a runtime mount point mapping |
 
 The Operator API can be relocated via the `OPERATOR_API_PATH_PREFIX` environment option.
 

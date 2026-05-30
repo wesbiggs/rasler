@@ -635,9 +635,11 @@ export function makeOperatorRouter({ store, selfDomain, apiSecret, corsOrigins =
    * /mount-points/{hostname}:
    *   put:
    *     tags: [Content]
-   *     summary: Map a hostname (with optional path prefix) to a bundle MASL CID
+   *     summary: Map a hostname to a bundle MASL CID (root mount)
    *     description: >
-   *       Registers a runtime mount point mapping. The MASL CID must already be
+   *       Registers a runtime mount point at the hostname root. To mount at a
+   *       path prefix instead, append it to the URL:
+   *       `PUT /mount-points/{hostname}/{prefix}`. The MASL CID must already be
    *       held locally and must be a bundle MASL. The MASL is pinned automatically
    *       to prevent eviction. This mapping takes priority over any static-root
    *       mapping for the same (hostname, mountPath) and persists across restarts.
@@ -657,9 +659,6 @@ export function makeOperatorRouter({ store, selfDomain, apiSecret, corsOrigins =
    *             properties:
    *               maslCid:
    *                 type: string
-   *               mountPath:
-   *                 type: string
-   *                 description: URL path prefix for this mount point (default /)
    *     responses:
    *       '200':
    *         description: Mapping set
@@ -690,19 +689,98 @@ export function makeOperatorRouter({ store, selfDomain, apiSecret, corsOrigins =
    *               $ref: '#/components/schemas/Error'
    *   delete:
    *     tags: [Content]
-   *     summary: Remove a runtime mount point mapping
+   *     summary: Remove a runtime mount point mapping (root)
+   *     description: >
+   *       Removes the root mapping for this hostname. To remove a prefixed
+   *       mapping, use `DELETE /mount-points/{hostname}/{prefix}`.
    *     parameters:
    *       - in: path
    *         name: hostname
    *         required: true
    *         schema:
    *           type: string
-   *       - in: query
-   *         name: mountPath
-   *         required: false
+   *     responses:
+   *       '200':
+   *         description: Mapping removed
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 status:
+   *                   type: string
+   *                   enum: [ok]
+   *       '401':
+   *         description: Missing or invalid operator secret
+   *       '404':
+   *         description: Runtime mapping not found
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/Error'
+   *
+   * /mount-points/{hostname}/{prefix}:
+   *   put:
+   *     tags: [Content]
+   *     summary: Map a hostname + path prefix to a bundle MASL CID
+   *     description: >
+   *       Same as `PUT /mount-points/{hostname}` but mounts at a path prefix
+   *       (e.g. `/docs`). The prefix is stripped before MASL resource lookup.
+   *     parameters:
+   *       - in: path
+   *         name: hostname
+   *         required: true
    *         schema:
    *           type: string
-   *         description: URL path prefix to remove (default /)
+   *       - in: path
+   *         name: prefix
+   *         required: true
+   *         schema:
+   *           type: string
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required: [maslCid]
+   *             properties:
+   *               maslCid:
+   *                 type: string
+   *     responses:
+   *       '200':
+   *         description: Mapping set
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 hostname:
+   *                   type: string
+   *                 mountPath:
+   *                   type: string
+   *                 maslCid:
+   *                   type: string
+   *       '400':
+   *         $ref: '#/components/responses/400'
+   *       '401':
+   *         description: Missing or invalid operator secret
+   *       '404':
+   *         $ref: '#/components/responses/404'
+   *   delete:
+   *     tags: [Content]
+   *     summary: Remove a runtime mount point mapping (prefixed)
+   *     parameters:
+   *       - in: path
+   *         name: hostname
+   *         required: true
+   *         schema:
+   *           type: string
+   *       - in: path
+   *         name: prefix
+   *         required: true
+   *         schema:
+   *           type: string
    *     responses:
    *       '200':
    *         description: Mapping removed
@@ -723,10 +801,15 @@ export function makeOperatorRouter({ store, selfDomain, apiSecret, corsOrigins =
    *             schema:
    *               $ref: '#/components/schemas/Error'
    */
-  router.put('/mount-points/:hostname', (req, res) => {
+  function getMountPrefix(req) {
     const { hostname } = req.params;
-    const { maslCid, mountPath } = req.body ?? {};
-    const prefix = normalizeMountPath(mountPath ?? '/');
+    return normalizeMountPath(req.path.slice('/mount-points/'.length + hostname.length) || '/');
+  }
+
+  function handleMountPointPut(req, res) {
+    const { hostname } = req.params;
+    const prefix = getMountPrefix(req);
+    const { maslCid } = req.body ?? {};
     if (!maslCid || typeof maslCid !== 'string') {
       return res.status(400).json({ error: 'maslCid is required' });
     }
@@ -747,18 +830,23 @@ export function makeOperatorRouter({ store, selfDomain, apiSecret, corsOrigins =
     store.setPinned(maslCid, true);
     store.setVirtualHost(hostname, prefix, maslCid);
     return res.status(200).json({ hostname, mountPath: prefix || '/', maslCid });
-  });
+  }
 
-  router.delete('/mount-points/:hostname', (req, res) => {
+  function handleMountPointDelete(req, res) {
     const { hostname } = req.params;
-    const prefix = normalizeMountPath(req.query.mountPath ?? '/');
+    const prefix = getMountPrefix(req);
     const exists = store.runtimeMountPoints.some(mp => mp.hostname === hostname && mp.prefix === prefix);
     if (!exists) {
       return res.status(404).json({ error: 'Runtime virtual host mapping not found' });
     }
     store.deleteVirtualHost(hostname, prefix);
     return res.status(200).json({ status: 'ok' });
-  });
+  }
+
+  router.put('/mount-points/:hostname', handleMountPointPut);
+  router.put('/mount-points/:hostname/*prefix', handleMountPointPut);
+  router.delete('/mount-points/:hostname', handleMountPointDelete);
+  router.delete('/mount-points/:hostname/*prefix', handleMountPointDelete);
 
   // Base /status: writes local fields and falls through to overlay/terminator.
   router.get('/status', (req, res, next) => {

@@ -838,6 +838,7 @@ describe('RASL routes', () => {
   });
 
   // ── Runtime mount with path prefix ────────────────────────────────────────
+  // PUT /mount-points/:hostname/*prefix and DELETE /mount-points/:hostname/*prefix
 
   describe('runtime virtual host mapping with path prefix', () => {
     let runtimePrefixApp, runtimePrefixStore, runtimePrefixCleanup;
@@ -867,24 +868,24 @@ describe('RASL routes', () => {
       return { maslCid, indexBytes, cssBytes };
     }
 
-    it('PUT with mountPath registers at that path prefix', async () => {
+    it('PUT with path prefix in URL registers at that path prefix', async () => {
       const { maslCid } = await uploadBundle(runtimePrefixStore);
       const res = await request(runtimePrefixApp)
-        .put('/mount-points/mp.example.com')
+        .put('/mount-points/mp.example.com/app')
         .set('x-rasl-operator-secret', 'test-secret')
-        .send({ maslCid, mountPath: '/app' });
+        .send({ maslCid });
       expect(res.status).toBe(200);
       expect(res.body.hostname).toBe('mp.example.com');
       expect(res.body.mountPath).toBe('/app');
       expect(res.body.maslCid).toBe(maslCid);
     });
 
-    it('serves content at /prefix/* after PUT with mountPath', async () => {
+    it('serves content at /prefix/* after PUT with path prefix in URL', async () => {
       const { maslCid } = await uploadBundle(runtimePrefixStore);
       await request(runtimePrefixApp)
-        .put('/mount-points/mp.example.com')
+        .put('/mount-points/mp.example.com/app')
         .set('x-rasl-operator-secret', 'test-secret')
-        .send({ maslCid, mountPath: '/app' });
+        .send({ maslCid });
 
       const res = await request(runtimePrefixApp)
         .get('/app/')
@@ -896,9 +897,9 @@ describe('RASL routes', () => {
     it('strips prefix from the Link header path', async () => {
       const { maslCid } = await uploadBundle(runtimePrefixStore);
       await request(runtimePrefixApp)
-        .put('/mount-points/mp.example.com')
+        .put('/mount-points/mp.example.com/app')
         .set('x-rasl-operator-secret', 'test-secret')
-        .send({ maslCid, mountPath: '/app' });
+        .send({ maslCid });
 
       const res = await request(runtimePrefixApp)
         .get('/app/style.css')
@@ -912,9 +913,9 @@ describe('RASL routes', () => {
     it('falls through for paths outside the prefix', async () => {
       const { maslCid } = await uploadBundle(runtimePrefixStore);
       await request(runtimePrefixApp)
-        .put('/mount-points/mp.example.com')
+        .put('/mount-points/mp.example.com/app')
         .set('x-rasl-operator-secret', 'test-secret')
-        .send({ maslCid, mountPath: '/app' });
+        .send({ maslCid });
 
       const fakeCid = await computeDataCid(Buffer.from('nope'));
       // Use a RASL path so the not-found handler returns 404 (not the operator router's 401).
@@ -924,15 +925,15 @@ describe('RASL routes', () => {
       expect(res.status).toBe(404);
     });
 
-    it('DELETE with ?mountPath removes only that prefix mapping', async () => {
+    it('DELETE with path prefix in URL removes only that prefix mapping', async () => {
       const { maslCid } = await uploadBundle(runtimePrefixStore);
       await request(runtimePrefixApp)
-        .put('/mount-points/mp.example.com')
+        .put('/mount-points/mp.example.com/app')
         .set('x-rasl-operator-secret', 'test-secret')
-        .send({ maslCid, mountPath: '/app' });
+        .send({ maslCid });
 
       const del = await request(runtimePrefixApp)
-        .delete('/mount-points/mp.example.com?mountPath=/app')
+        .delete('/mount-points/mp.example.com/app')
         .set('x-rasl-operator-secret', 'test-secret');
       expect(del.status).toBe(200);
 
@@ -940,7 +941,7 @@ describe('RASL routes', () => {
       expect(runtimePrefixStore.runtimeMountPoints.some(m => m.hostname === 'mp.example.com')).toBe(false);
     });
 
-    it('DELETE without mountPath targets the root mapping', async () => {
+    it('DELETE without path prefix targets the root mapping', async () => {
       const { maslCid } = await uploadBundle(runtimePrefixStore);
       await request(runtimePrefixApp)
         .put('/mount-points/mp2.example.com')
@@ -957,9 +958,9 @@ describe('RASL routes', () => {
     it('GET /mount-points shows mountPath for runtime entry', async () => {
       const { maslCid } = await uploadBundle(runtimePrefixStore);
       await request(runtimePrefixApp)
-        .put('/mount-points/mp.example.com')
+        .put('/mount-points/mp.example.com/app')
         .set('x-rasl-operator-secret', 'test-secret')
-        .send({ maslCid, mountPath: '/app' });
+        .send({ maslCid });
 
       const res = await request(runtimePrefixApp)
         .get('/mount-points')
@@ -973,9 +974,9 @@ describe('RASL routes', () => {
     it('runtime mount with prefix persists across store restarts', async () => {
       const { maslCid } = await uploadBundle(runtimePrefixStore);
       await request(runtimePrefixApp)
-        .put('/mount-points/mp.example.com')
+        .put('/mount-points/mp.example.com/app')
         .set('x-rasl-operator-secret', 'test-secret')
-        .send({ maslCid, mountPath: '/app' });
+        .send({ maslCid });
 
       const { Store } = await import('../../src/storage/store.js');
       const store2 = new Store(runtimePrefixStore.db, runtimePrefixStore.dataDir, 10 * 1024 * 1024);
