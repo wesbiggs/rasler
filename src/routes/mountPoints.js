@@ -70,7 +70,7 @@ export function makeMountPointRouter({ store, mountPoints, selfDomain }) {
     res.set(resolved.headers);
     res.set('content-length', String(result.meta.size));
     res.set('unencoded-digest', cidToUnencodedDigest(resolved.cid));
-    res.set('link', `<https://${selfDomain}/.well-known/rasl/${maslCid}${maslPath}>; rel="duplicate"`);
+    res.set('link', `<${req.protocol}://${selfDomain}/.well-known/rasl/${maslCid}${maslPath}>; rel="duplicate"`);
     res.status(200);
     result.stream.pipe(res);
   });

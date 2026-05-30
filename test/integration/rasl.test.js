@@ -521,7 +521,7 @@ describe('RASL routes', () => {
       const link = res.headers['link'];
       expect(link).toBeDefined();
       expect(link).toMatch(/rel="duplicate"/);
-      expect(link).toMatch(/https:\/\/test\.example\.com\/\.well-known\/rasl\//);
+      expect(link).toMatch(/https?:\/\/test\.example\.com\/\.well-known\/rasl\//);
       expect(link).toContain('/index.html>');
     });
 
