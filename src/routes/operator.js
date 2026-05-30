@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, json as expressJson } from 'express';
 import multer from 'multer';
 import { CarReader } from '@ipld/car';
 import { base32 } from 'multiformats/bases/base32';
@@ -108,6 +108,7 @@ async function readCar(fileBuffer) {
 export function makeOperatorRouter({ store, selfDomain, apiSecret, corsOrigins = [], staticRoots = [], mountPoints = [] }) {
   const router = Router();
   if (corsOrigins.length > 0) router.use(makeOperatorCors(corsOrigins));
+  router.use(expressJson({ limit: '10mb' }));
   router.use(requireApiSecret(apiSecret));
 
   /**

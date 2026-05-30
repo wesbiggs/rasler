@@ -1,21 +1,23 @@
 # RASLer
 
-RASLer (`rasler`) implements [RASL](https://dasl.ing/rasl.html)'s well-known endpoint, backed by content-addressed storage, MASL document encoding, and including a HTTP-based operator API.
+RASLer is a HTTP server that implements [RASL](https://dasl.ing/rasl.html)'s `/.well-known/rasl/` endpoint, backed by content-addressed storage, [MASL](https://dasl.ing/masl.html) metadata support, and a full-featured operator API.
 
 ## What's included
 
-- **Storage** — SQLite-backed content store with capacity management and pluggable eviction policy (`Store`, `openDb`)
-- **CID & MASL** — content-addressed identifiers and MASL document encoding for single files and website bundles
-- **Static roots** — serve files from operator-owned directories by CID without copying them into the blob store
-- **Operator API** — upload, pin, content CRUD, mount points, status, etc.
+- **Storage** — content blobs are stored by CID on disk, backed by a SQLite database that enables capacity management and a pluggable eviction policy
+- **DASL & MASL CIDs** — content serving by simple DASL CIDs, or via MASL CIDs with path-based resolution for both single files and website bundles
+- **Static roots** — serve files from local directories by CID without copying them into the blob store
+- **Operator API** — upload raw files or CARs, pin/unpin, and evict; manage mount points; status, etc.
 - **Server factory** — compose your own server including RASL functionality
 
 ## Quick start
 
 ```bash
 npm install
-cp .env.example .env   # set DOMAIN and API_SECRET
+cp .env.example .env
+# edit .env and set DOMAIN, API_SECRET, and SWAGGER_UI=true
 npm start
+# open http://localhost:3000/api-docs in a browser
 ```
 
 ## Configuration
@@ -65,7 +67,7 @@ MIME types are inferred from file extensions. Supported types include `text/html
 
 ## Mount points
 
-Mount points map the HTTP `Host:` header (and an optional URL path prefix) to a static root directory, letting the node serve a website at a plain URL (e.g. `https://example.com/about.html`) without nginx or another reverse proxy.
+Mount points map the HTTP `Host:` header (and an optional URL path prefix) to a static root directory, letting the node serve a website at a plain URL (e.g. `https://example.com/about.html`) without a reverse proxy like `nginx`.
 
 ### Configuration
 
@@ -83,45 +85,44 @@ Each entry maps a hostname with an optional URL path prefix to a directory. The 
 4. `/.well-known/rasl/...` paths always pass through to the RASL router unchanged.
 5. If the root has not yet been indexed (startup window), the server returns `503`.
 
-### Operator API
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/mount-points` | List all mount points (config and runtime) with their paths and current MASL CIDs |
-| `PUT` | `/mount-points/:hostname` | Map a hostname (with optional `mountPath`) to a held bundle MASL CID (persisted, overrides static mapping) |
-| `DELETE` | `/mount-points/:hostname` | Remove a runtime mount point mapping (use `?mountPath=` for non-root prefixes) |
-
-`PUT /mount-points/:hostname` accepts `{ "maslCid": "bafy...", "mountPath": "/docs" }`. `mountPath` is optional and defaults to `/`. The CID must already be held locally and must be a bundle MASL; it is pinned automatically to prevent eviction. The mapping survives server restarts (stored in SQLite). It takes priority over any same (hostname, mountPath) entry in `MOUNT_POINTS`.
-
-`GET /mount-points` returns a `source` field (`"runtime"` or `"static"`) and a `mountPath` field for each entry. Runtime entries appear first.
-
 ## API
-
-### Operator API (requires `x-rasl-operator-secret` header)
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/static-roots` | List configured static roots and their current MASL CIDs |
-| `GET` | `/mount-points` | List all mount points (config and runtime) with their MASL CIDs |
-| `PUT` | `/mount-points/:hostname` | Map a hostname (with optional mountPath) to a held bundle MASL CID (runtime, persisted) |
-| `DELETE` | `/mount-points/:hostname` | Remove a runtime mount point mapping |
-| `POST` | `/upload` | Upload files (multipart or CAR) |
-| `POST` | `/pin` | Pin CIDs |
-| `DELETE` | `/pin/:cid` | Unpin a CID |
-| `GET` | `/content` | List held content |
-| `GET` | `/content/:cid` | Content metadata |
-| `DELETE` | `/content/:cid` | Evict a CID |
-| `GET` | `/status` | Node status (storage usage) |
 
 ### RASL retrieval (public)
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/.well-known/rasl/:cid` | Retrieve content by CID; 404 if not held locally |
+| `GET` | `/.well-known/rasl/:cid` | Retrieve content by CID |
 | `HEAD` | `/.well-known/rasl/:cid` | Same as GET, no body |
-| `GET` | `/.well-known/rasl/:cid/*` | Bundle path suffix resolved against MASL `resources` map |
+| `GET` | `/.well-known/rasl/:cid/*` | Path suffix resolved against MASL document at CID |
+| `HEAD` | `/.well-known/rasl/:cid/*` | Same as GET, no body |
+
+### Operator API (requires `x-rasl-operator-secret` header)
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/status` | Show server status (including storage usage) |
+| `POST` | `/upload` | Upload files (multipart or CAR) |
+| `POST` | `/pin` | Pin CIDs |
+| `DELETE` | `/pin/:cid` | Unpin a CID |
+| `GET` | `/content` | List held content |
+| `GET` | `/content/:cid` | Get content metadata |
+| `DELETE` | `/content/:cid` | Evict a CID |
+| `GET` | `/static-roots` | List configured static roots and their current MASL CIDs |
+| `GET` | `/mount-points` | List all mount points (config and runtime) with their MASL CIDs |
+| `PUT` | `/mount-points/:hostname` | Map a hostname (with optional path prefix) to a held bundle MASL CID (runtime, persisted) |
+| `DELETE` | `/mount-points/:hostname` | Remove a runtime mount point mapping |
+
+The Operator API can be relocated via the `OPERATOR_API_PATH_PREFIX` environment option.
+
+### Swagger UI
+
+If enabled with `SWAGGER_UI=true`, the operator API documentation from `openapi.json` is used to power an interactive UI.
+
+The Swagger UI is found at `/api-docs` (with optional `OPERATOR_API_PATH_PREFIX`).
 
 ## Usage as a library
+
+### Standalone
 
 ```js
 import { openDb } from 'rasler/src/storage/db.js';
@@ -133,7 +134,7 @@ import { indexStaticRoots } from 'rasler/src/static.js';
 
 const db = openDb('./data');
 const store = new Store(db, './data', 1024 * 1024 * 1024, {
-  staticRoots: ['/var/www/html'],  // omit if not using static roots
+  staticRoots: ['/var/www/html'],
 });
 
 const config = {
@@ -161,6 +162,22 @@ finalizeApp(app, config);
 app.listen(config.port);
 ```
 
+### Adding to an existing Express app
+
+Use `addRaslerMiddleware` instead of `createApp` to mount RASLer onto an app you already control. `trust proxy` is not set — configure it on your app as needed.
+
+```js
+import { addRaslerMiddleware, finalizeApp } from 'rasler/src/server.js';
+import { makeRaslNotFoundHandler } from 'rasler/src/routes/rasl.js';
+import { makeOperatorRouter } from 'rasler/src/routes/operator.js';
+
+// your existing app
+addRaslerMiddleware(app, { store, config });
+app.use(makeRaslNotFoundHandler());
+app.use(makeOperatorRouter({ store, selfDomain: config.domain, apiSecret: config.apiSecret }));
+finalizeApp(app, config);
+```
+
 ## Scripts
 
 ```bash
@@ -171,16 +188,8 @@ npm start
 npm test
 
 # Regenerate openapi.json from JSDoc in src/routes/operator.js
-npm generate:openapi
+npm run generate:openapi
 
 # Build a website CAR file (MASL bundle) to upload
-npm website-to-car <input-dir> [output.car]
-```
-
-## OpenAPI
-
-`openapi.json` documents the operator API in detail and is used by the Swagger UI (if enabled). Regenerate after changing route JSDoc:
-
-```bash
-npm generate:openapi
+npm run website-to-car <input-dir> [output.car]
 ```

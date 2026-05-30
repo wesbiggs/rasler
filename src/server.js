@@ -34,19 +34,13 @@ function mergeSpecs(base, overlay) {
   };
 }
 
-// Base app factory: express setup, static files, base RASL content router,
-// and Swagger UI (if configured). Does not mount the operator router or any
-// overlay — callers do that before calling finalizeApp().
+// Mounts RASLer middleware (static files, mount-point router, RASL router,
+// Swagger UI) onto an existing Express app. Does not set trust proxy or mount
+// the operator router — callers handle those before calling finalizeApp().
 // openApiOverlays: array of file paths to OpenAPI overlay specs to merge in.
-export function createApp({ store, config, openApiOverlays = [] }) {
-  const app = express();
-
-  app.set('trust proxy', 1);
-  app.use(express.json({ limit: '10mb' }));
+export function addRaslerMiddleware(app, { store, config, openApiOverlays = [] }) {
   app.use(express.static(resolve(__dirname, '..', 'public')));
-
   app.use(makeMountPointRouter({ store, mountPoints: config.mountPoints ?? [], selfDomain: config.domain }));
-
   app.use(makeRaslRouter({ store }));
 
   // Swagger UI — mounted early so the browser can load it without credentials.
@@ -65,7 +59,15 @@ export function createApp({ store, config, openApiOverlays = [] }) {
     }));
     console.log(`Swagger UI enabled at ${swaggerPath}`);
   }
+}
 
+// Convenience factory: creates a new Express app with trust proxy enabled,
+// then calls addRaslerMiddleware. Use addRaslerMiddleware directly when adding
+// RASLer to an existing app.
+export function createApp({ store, config, openApiOverlays = [] }) {
+  const app = express();
+  app.set('trust proxy', 1);
+  addRaslerMiddleware(app, { store, config, openApiOverlays });
   return app;
 }
 
