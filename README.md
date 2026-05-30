@@ -190,6 +190,6 @@ npm test
 # Regenerate openapi.json from JSDoc in src/routes/operator.js
 npm run generate:openapi
 
-# Build a website CAR file (MASL bundle) to upload
+# Build a CAR file (with MASL bundle header) from a static website directory tree
 npm run get-in-the-car <input-dir> [output.car]
 ```
