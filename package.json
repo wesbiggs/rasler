@@ -10,7 +10,7 @@
     "test:unit": "NODE_OPTIONS=--experimental-vm-modules jest test/unit --runInBand",
     "test:integration": "NODE_OPTIONS=--experimental-vm-modules jest test/integration --runInBand",
     "generate:openapi": "node scripts/generate-openapi.js",
-    "website-to-car": "node scripts/website-to-car.js"
+    "get-in-the-car": "node scripts/get-in-the-car.js"
   },
   "dependencies": {
     "@ipld/car": "5.4.6",

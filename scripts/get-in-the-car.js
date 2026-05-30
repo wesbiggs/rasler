@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Builds a DASL-compliant CAR file from a static website directory.
-// Usage: npm run website-to-car <input-dir> [output.car]
+// Usage: npm run get-in-the-car <input-dir> [output.car]
 
 import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { join, relative, basename, dirname } from 'node:path';
@@ -37,7 +37,7 @@ async function buildCar(rootCidStr, blocks) {
 async function main() {
   const [,, inputDir, outputArg] = process.argv;
   if (!inputDir) {
-    process.stderr.write('Usage: npm run website-to-car <input-dir> [output.car]\n');
+    process.stderr.write('Usage: npm run get-in-the-car <input-dir> [output.car]\n');
     process.exit(1);
   }
 

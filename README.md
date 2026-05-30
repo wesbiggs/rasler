@@ -191,5 +191,5 @@ npm test
 npm run generate:openapi
 
 # Build a website CAR file (MASL bundle) to upload
-npm run website-to-car <input-dir> [output.car]
+npm run get-in-the-car <input-dir> [output.car]
 ```
