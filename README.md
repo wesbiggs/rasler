@@ -162,7 +162,7 @@ finalizeApp(app, config);
 app.listen(config.port);
 ```
 
-### Adding to an existing Express app
+### Adding to an existing Express 5 app
 
 Use `addRaslerMiddleware` instead of `createApp` to mount RASLer onto an app you already control. `trust proxy` is not set — configure it on your app as needed.
 
