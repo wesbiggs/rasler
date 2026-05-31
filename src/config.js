@@ -6,8 +6,15 @@ import { parseMountPoints, parseStaticRoots } from './util/parseEnvConfig.js';
 
 export { parseSize, normalizeMountPath };
 
+// Accept a bare hostname (e.g. "node1.example.com") for backwards compat and
+// default it to https://. A full origin (e.g. "http://localhost:3000") is used
+// as-is so the correct protocol appears in Link: rel="duplicate" headers.
+const originRaw = required('ORIGIN');
+const originUrl = new URL(/^https?:\/\//.test(originRaw) ? originRaw : `https://${originRaw}`);
+
 const config = Object.freeze({
-  domain: required('DOMAIN'),
+  origin: originUrl.origin,
+  domain: originUrl.host,
   port: parseInt(optional('PORT', '3000'), 10),
   dataDir: resolve(optional('DATA_DIR', './data')),
   totalCapacity: parseSize(optional('TOTAL_CAPACITY', '1G')),

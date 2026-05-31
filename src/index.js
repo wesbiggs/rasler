@@ -26,7 +26,7 @@ function main() {
   app.use(makeRaslNotFoundHandler());
   app.use(prefix, makeOperatorRouter({
     store,
-    selfDomain: config.domain,
+    selfOrigin: config.origin,
     apiSecret: config.apiSecret,
     corsOrigins: config.operatorCorsOrigins,
     staticRoots: config.staticRoots,
@@ -36,7 +36,7 @@ function main() {
   finalizeApp(app, config);
 
   app.listen(config.port, () => {
-    console.log(`RASL node ${config.domain} listening on port ${config.port}`);
+    console.log(`RASL node ${config.origin} listening on port ${config.port}`);
   });
 }
 

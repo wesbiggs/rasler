@@ -40,7 +40,7 @@ function mergeSpecs(base, overlay) {
 // openApiOverlays: array of file paths to OpenAPI overlay specs to merge in.
 export function addRaslerMiddleware(app, { store, config, openApiOverlays = [] }) {
   app.use(express.static(resolve(__dirname, '..', 'public')));
-  app.use(makeMountPointRouter({ store, mountPoints: config.mountPoints ?? [], selfDomain: config.domain }));
+  app.use(makeMountPointRouter({ store, mountPoints: config.mountPoints ?? [], selfOrigin: config.origin }));
   app.use(makeRaslRouter({ store }));
 
   // Swagger UI — mounted early so the browser can load it without credentials.

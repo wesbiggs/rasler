@@ -8,7 +8,7 @@ import { makeRaslNotFoundHandler } from '../../src/routes/rasl.js';
 import { makeOperatorRouter } from '../../src/routes/operator.js';
 
 export function makeBaseTestApp({
-  domain = 'test.example.com',
+  origin = 'http://test.example.com',
   apiSecret = 'test-secret',
   totalCapacity = 10 * 1024 * 1024,
   operatorCorsOrigins = [],
@@ -21,7 +21,7 @@ export function makeBaseTestApp({
   const store = new Store(db, dataDir, totalCapacity, { staticRoots });
 
   const config = {
-    domain, port: 0, apiSecret, totalCapacity, dataDir,
+    origin, domain: new URL(origin).host, port: 0, apiSecret, totalCapacity, dataDir,
     operatorCorsOrigins, operatorApiPathPrefix,
     swaggerUi: false,
     mountPoints,
@@ -31,7 +31,7 @@ export function makeBaseTestApp({
   const prefix = operatorApiPathPrefix || '/';
 
   app.use(makeRaslNotFoundHandler());
-  app.use(prefix, makeOperatorRouter({ store, selfDomain: domain, apiSecret, corsOrigins: operatorCorsOrigins, staticRoots, mountPoints }));
+  app.use(prefix, makeOperatorRouter({ store, selfOrigin: origin, apiSecret, corsOrigins: operatorCorsOrigins, staticRoots, mountPoints }));
 
   finalizeApp(app, config);
 
@@ -39,5 +39,5 @@ export function makeBaseTestApp({
     rmSync(dataDir, { recursive: true, force: true });
   }
 
-  return { app, store, cleanup, domain, apiSecret };
+  return { app, store, cleanup, origin, apiSecret };
 }

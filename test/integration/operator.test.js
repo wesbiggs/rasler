@@ -81,10 +81,10 @@ describe('Operator API routes', () => {
   });
 
   describe('GET /status', () => {
-    it('returns domain and storage fields', async () => {
+    it('returns origin and storage fields', async () => {
       const res = await request(app).get('/status').set(OPERATOR_SECRET_HEADER, apiSecret);
       expect(res.status).toBe(200);
-      expect(res.body.domain).toBeDefined();
+      expect(res.body.origin).toBeDefined();
       expect(res.body.storage.totalCapacity).toBeGreaterThan(0);
       expect(res.body.storage.poolUsed).toBeGreaterThanOrEqual(0);
       expect(res.body.storage.poolAvailable).toBeGreaterThanOrEqual(0);
@@ -610,7 +610,7 @@ describe('Operator API path prefix', () => {
     try {
       const ok = await request(app).get('/admin/status').set(OPERATOR_SECRET_HEADER, apiSecret);
       expect(ok.status).toBe(200);
-      expect(ok.body.domain).toBe('test.example.com');
+      expect(ok.body.origin).toBe('http://test.example.com');
 
       const auth = await request(app).get('/admin/status');
       expect(auth.status).toBe(401);

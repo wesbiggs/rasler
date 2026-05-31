@@ -15,7 +15,7 @@ RASLer is a HTTP server that implements [RASL](https://dasl.ing/rasl.html)'s `/.
 ```bash
 npm install
 cp .env.example .env
-# edit .env and set DOMAIN, API_SECRET, and SWAGGER_UI=true
+# edit .env and set ORIGIN, API_SECRET, and SWAGGER_UI=true
 npm start
 # open http://localhost:3000/api-docs in a browser
 ```
@@ -24,7 +24,7 @@ npm start
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `DOMAIN` | Yes | — | This node's public domain name (e.g. `node1.example.com`) |
+| `ORIGIN` | Yes | — | This node's public origin, protocol included (e.g. `https://node1.example.com` or `http://localhost:3000`). Used in `Link: rel="duplicate"` headers. A bare hostname without protocol is accepted and defaults to `https://`. |
 | `API_SECRET` | Yes | — | Pre-shared secret to send as `x-rasl-operator-secret` header |
 | `PORT` | No | `3000` | HTTP listen port |
 | `DATA_DIR` | No | `./data` | Directory for the SQLite database and content blobs |
@@ -138,7 +138,7 @@ const store = new Store(db, './data', 1024 * 1024 * 1024, {
 });
 
 const config = {
-  domain: 'mynode.example.com',
+  origin: 'https://mynode.example.com',
   port: 3000,
   apiSecret: process.env.API_SECRET,
   totalCapacity: 1024 * 1024 * 1024,
@@ -156,7 +156,7 @@ if (config.staticRoots.length > 0) {
 
 const app = createApp({ store, config });
 app.use(makeRaslNotFoundHandler());
-app.use(makeOperatorRouter({ store, selfDomain: config.domain, apiSecret: config.apiSecret }));
+app.use(makeOperatorRouter({ store, selfOrigin: config.origin, apiSecret: config.apiSecret }));
 finalizeApp(app, config);
 
 app.listen(config.port);
@@ -174,7 +174,7 @@ import { makeOperatorRouter } from 'rasler/src/routes/operator.js';
 // your existing app
 addRaslerMiddleware(app, { store, config });
 app.use(makeRaslNotFoundHandler());
-app.use(makeOperatorRouter({ store, selfDomain: config.domain, apiSecret: config.apiSecret }));
+app.use(makeOperatorRouter({ store, selfOrigin: config.origin, apiSecret: config.apiSecret }));
 finalizeApp(app, config);
 ```
 

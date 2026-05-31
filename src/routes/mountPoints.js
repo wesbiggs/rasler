@@ -21,7 +21,7 @@ function findMountPoint(mountPoints, hostname, path) {
 //
 // The MASL CID is read from store.staticRootMasls on every request, so it
 // reflects the current indexed version automatically after any re-index.
-export function makeMountPointRouter({ store, mountPoints, selfDomain }) {
+export function makeMountPointRouter({ store, mountPoints, selfOrigin }) {
   const router = Router();
 
   router.use((req, res, next) => {
@@ -70,7 +70,7 @@ export function makeMountPointRouter({ store, mountPoints, selfDomain }) {
     res.set(resolved.headers);
     res.set('content-length', String(result.meta.size));
     res.set('unencoded-digest', cidToUnencodedDigest(resolved.cid));
-    res.set('link', `<${req.protocol}://${selfDomain}/.well-known/rasl/${maslCid}${maslPath}>; rel="duplicate"`);
+    res.set('link', `<${selfOrigin}/.well-known/rasl/${maslCid}${maslPath}>; rel="duplicate"`);
     res.status(200);
     result.stream.pipe(res);
   });

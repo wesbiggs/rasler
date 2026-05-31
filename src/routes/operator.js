@@ -105,7 +105,7 @@ async function readCar(fileBuffer) {
 // routes — Express runs router.use middleware for all requests entering the router
 // even when no route matches, so auth is enforced before the request falls through
 // to the overlay extension.
-export function makeOperatorRouter({ store, selfDomain, apiSecret, corsOrigins = [], staticRoots = [], mountPoints = [] }) {
+export function makeOperatorRouter({ store, selfOrigin, apiSecret, corsOrigins = [], staticRoots = [], mountPoints = [] }) {
   const router = Router();
   if (corsOrigins.length > 0) router.use(makeOperatorCors(corsOrigins));
   router.use(expressJson({ limit: '10mb' }));
@@ -851,7 +851,7 @@ export function makeOperatorRouter({ store, selfDomain, apiSecret, corsOrigins =
   // Base /status: writes local fields and falls through to overlay/terminator.
   router.get('/status', (req, res, next) => {
     res.locals.status = {
-      domain: selfDomain,
+      origin: selfOrigin,
       storage: {
         totalCapacity: store.totalCapacity,
         poolUsed: store.getPoolUsed(),
