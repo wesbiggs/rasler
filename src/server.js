@@ -39,7 +39,6 @@ function mergeSpecs(base, overlay) {
 // the operator router — callers handle those before calling finalizeApp().
 // openApiOverlays: array of file paths to OpenAPI overlay specs to merge in.
 export function addRaslerMiddleware(app, { store, config, openApiOverlays = [] }) {
-  app.use(express.static(resolve(__dirname, '..', 'public')));
   app.use(makeMountPointRouter({ store, mountPoints: config.mountPoints ?? [], selfOrigin: config.origin }));
   app.use(makeRaslRouter({ store }));
 
@@ -67,6 +66,7 @@ export function addRaslerMiddleware(app, { store, config, openApiOverlays = [] }
 export function createApp({ store, config, openApiOverlays = [] }) {
   const app = express();
   app.set('trust proxy', 1);
+  app.use(express.static(resolve(__dirname, '..', 'public')));
   addRaslerMiddleware(app, { store, config, openApiOverlays });
   return app;
 }
