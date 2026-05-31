@@ -2,7 +2,7 @@ import {
   dbPutContent, dbGetContent, dbHasContent, dbListContent, dbDeleteContent,
   dbRecordRequest, dbSetPinned, dbGetTotalPoolSize, dbGetTotalPinnedSize,
   dbCountPinned, dbCountContent, dbListContentPage,
-  dbSetVirtualHost, dbDeleteVirtualHost, dbListVirtualHosts,
+  dbSetMountPoint, dbDeleteMountPoint, dbListMountPoints,
 } from './db.js';
 import {
   writeContent, readContent, readContentFromPath,
@@ -39,7 +39,7 @@ export class Store {
     // Runtime mount point mappings set via operator API. Persisted in SQLite.
     // Array of {hostname, prefix, maslCid} sorted longest-prefix-first.
     // Takes priority over staticRootMasls in mount-point routing.
-    this.runtimeMountPoints = dbListVirtualHosts(db)
+    this.runtimeMountPoints = dbListMountPoints(db)
       .map(row => ({ hostname: row.hostname, prefix: row.mount_path, maslCid: row.masl_cid }))
       .sort((a, b) => b.prefix.length - a.prefix.length);
   }
@@ -141,8 +141,8 @@ export class Store {
   // was performed or not needed, false if impossible. The eviction policy is
   // injected via the constructor; replica-row cleanup happens automatically
   // via FK cascade on the replicas table.
-  setVirtualHost(hostname, prefix, maslCid) {
-    dbSetVirtualHost(this.db, hostname, prefix, maslCid);
+  setMountPoint(hostname, prefix, maslCid) {
+    dbSetMountPoint(this.db, hostname, prefix, maslCid);
     this.runtimeMountPoints = this.runtimeMountPoints.filter(
       mp => !(mp.hostname === hostname && mp.prefix === prefix)
     );
@@ -150,8 +150,8 @@ export class Store {
     this.runtimeMountPoints.sort((a, b) => b.prefix.length - a.prefix.length);
   }
 
-  deleteVirtualHost(hostname, prefix) {
-    dbDeleteVirtualHost(this.db, hostname, prefix);
+  deleteMountPoint(hostname, prefix) {
+    dbDeleteMountPoint(this.db, hostname, prefix);
     this.runtimeMountPoints = this.runtimeMountPoints.filter(
       mp => !(mp.hostname === hostname && mp.prefix === prefix)
     );

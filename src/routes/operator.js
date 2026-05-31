@@ -828,7 +828,7 @@ export function makeOperatorRouter({ store, selfDomain, apiSecret, corsOrigins =
       return res.status(400).json({ error: 'maslCid must refer to a bundle MASL' });
     }
     store.setPinned(maslCid, true);
-    store.setVirtualHost(hostname, prefix, maslCid);
+    store.setMountPoint(hostname, prefix, maslCid);
     return res.status(200).json({ hostname, mountPath: prefix || '/', maslCid });
   }
 
@@ -839,7 +839,7 @@ export function makeOperatorRouter({ store, selfDomain, apiSecret, corsOrigins =
     if (!exists) {
       return res.status(404).json({ error: 'Runtime virtual host mapping not found' });
     }
-    store.deleteVirtualHost(hostname, prefix);
+    store.deleteMountPoint(hostname, prefix);
     return res.status(200).json({ status: 'ok' });
   }
 

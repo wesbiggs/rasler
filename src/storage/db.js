@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS content (
   source_path TEXT,
   source_mtime INTEGER
 );
-CREATE TABLE IF NOT EXISTS virtual_hosts (
+CREATE TABLE IF NOT EXISTS mount_points (
   hostname TEXT NOT NULL,
   mount_path TEXT NOT NULL DEFAULT '',
   masl_cid TEXT NOT NULL,
@@ -115,19 +115,19 @@ export function dbCountPinned(db) {
   return row?.cnt ?? 0;
 }
 
-// ---- Virtual hosts ----
+// ---- Mount points ----
 
-export function dbSetVirtualHost(db, hostname, mountPath, maslCid) {
+export function dbSetMountPoint(db, hostname, mountPath, maslCid) {
   db.prepare(`
-    INSERT INTO virtual_hosts (hostname, mount_path, masl_cid) VALUES (?, ?, ?)
+    INSERT INTO mount_points (hostname, mount_path, masl_cid) VALUES (?, ?, ?)
     ON CONFLICT(hostname, mount_path) DO UPDATE SET masl_cid = excluded.masl_cid
   `).run(hostname, mountPath, maslCid);
 }
 
-export function dbDeleteVirtualHost(db, hostname, mountPath) {
-  db.prepare('DELETE FROM virtual_hosts WHERE hostname = ? AND mount_path = ?').run(hostname, mountPath);
+export function dbDeleteMountPoint(db, hostname, mountPath) {
+  db.prepare('DELETE FROM mount_points WHERE hostname = ? AND mount_path = ?').run(hostname, mountPath);
 }
 
-export function dbListVirtualHosts(db) {
-  return db.prepare('SELECT hostname, mount_path, masl_cid FROM virtual_hosts').all();
+export function dbListMountPoints(db) {
+  return db.prepare('SELECT hostname, mount_path, masl_cid FROM mount_points').all();
 }
