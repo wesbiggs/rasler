@@ -22,7 +22,7 @@ npm start
 
 From the API docs UI, you can:
 - Enter the API_SECRET to authenticate
-- Upload one or more files (or CARs with MASL metadata, see [Scripts] for help building) and see their MASL CIDs
+- Upload one or more files (or CARs with MASL metadata, see [Utilities](#utilities) for help building) and record their MASL CIDs
 
 Once uploaded, you can access the files at `http://localhost:3000/.well-known/rasl/<cid>`.
 
@@ -45,14 +45,6 @@ See [USE_CASES.md](USE_CASES.md) for an overview of common deployment patterns i
 | `STATIC_ROOTS` | No | — | Comma-separated directory paths to serve as static RASL roots (see [STATIC_ROOTS.md](STATIC_ROOTS.md)) |
 | `STATIC_MAX_HISTORY` | No | — | Maximum pinned MASL versions per static root; older versions are unpinned for LRU eviction |
 | `MOUNT_POINTS` | No | — | Comma-separated mount point definitions mapping `hostname[/prefix]:directory` (see [MOUNT_POINTS.md](MOUNT_POINTS.md)) |
-
-## Static roots
-
-See [STATIC_ROOTS.md](STATIC_ROOTS.md).
-
-## Mount points
-
-See [MOUNT_POINTS.md](MOUNT_POINTS.md).
 
 ## API
 
@@ -83,70 +75,6 @@ See [MOUNT_POINTS.md](MOUNT_POINTS.md).
 
 The Operator API can be relocated via the `OPERATOR_API_PATH_PREFIX` environment option.
 
-### Swagger UI
-
-If enabled with `SWAGGER_UI=true`, the operator API documentation from `openapi.json` is used to power an interactive UI.
-
-The Swagger UI is found at `/api-docs` (with optional `OPERATOR_API_PATH_PREFIX`).
-
-## Usage as a library
-
-### Standalone
-
-```js
-import { openDb } from 'rasler/src/storage/db.js';
-import { Store } from 'rasler/src/storage/store.js';
-import { createApp, finalizeApp } from 'rasler/src/server.js';
-import { makeRaslNotFoundHandler } from 'rasler/src/routes/rasl.js';
-import { makeOperatorRouter } from 'rasler/src/routes/operator.js';
-import { indexStaticRoots } from 'rasler/src/static.js';
-
-const db = openDb('./data');
-const store = new Store(db, './data', 1024 * 1024 * 1024, {
-  staticRoots: ['/var/www/html'],
-});
-
-const config = {
-  origin: 'https://mynode.example.com',
-  port: 3000,
-  apiSecret: process.env.API_SECRET,
-  totalCapacity: 1024 * 1024 * 1024,
-  dataDir: './data',
-  operatorCorsOrigins: [],
-  operatorApiPathPrefix: '',
-  swaggerUi: false,
-  staticRoots: ['/var/www/html'],
-  staticMaxHistory: 3,
-};
-
-if (config.staticRoots.length > 0) {
-  indexStaticRoots(config.staticRoots, store, { maxHistory: config.staticMaxHistory });
-}
-
-const app = createApp({ store, config });
-app.use(makeRaslNotFoundHandler());
-app.use(makeOperatorRouter({ store, selfOrigin: config.origin, apiSecret: config.apiSecret }));
-finalizeApp(app, config);
-
-app.listen(config.port);
-```
-
-### Adding to an existing Express 5 app
-
-Use `addRaslerMiddleware` instead of `createApp` to mount RASLer onto an app you already control. `trust proxy` is not set — configure it on your app as needed.
-
-```js
-import { addRaslerMiddleware, finalizeApp } from 'rasler/src/server.js';
-import { makeRaslNotFoundHandler } from 'rasler/src/routes/rasl.js';
-import { makeOperatorRouter } from 'rasler/src/routes/operator.js';
-
-// your existing app
-addRaslerMiddleware(app, { store, config });
-app.use(makeRaslNotFoundHandler());
-app.use(makeOperatorRouter({ store, selfOrigin: config.origin, apiSecret: config.apiSecret }));
-finalizeApp(app, config);
-```
-
 ## Utilities
 
 The following utility script is included.
@@ -176,3 +104,5 @@ npm test
 # Regenerate openapi.json from JSDoc in src/routes/operator.js
 npm run generate:openapi
 ```
+
+You can also [use RASLer as a library](LIBRARY_USAGE.md) in your own apps.
