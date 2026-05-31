@@ -848,6 +848,49 @@ export function makeOperatorRouter({ store, selfOrigin, apiSecret, corsOrigins =
   router.delete('/mount-points/:hostname', handleMountPointDelete);
   router.delete('/mount-points/:hostname/*prefix', handleMountPointDelete);
 
+  /**
+   * @openapi
+   * /status:
+   *   get:
+   *     tags: [Node status]
+   *     summary: Get node status
+   *     description: >
+   *       Returns the node's public origin and current storage metrics. Overlay
+   *       routers may add additional fields to the response before the terminator
+   *       sends it.
+   *     responses:
+   *       '200':
+   *         description: Node status
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 origin:
+   *                   type: string
+   *                   description: Public origin of this node (protocol + host)
+   *                   example: https://node1.example.com
+   *                 storage:
+   *                   type: object
+   *                   properties:
+   *                     totalCapacity:
+   *                       type: integer
+   *                       description: Total storage budget in bytes
+   *                     poolUsed:
+   *                       type: integer
+   *                       description: Bytes used by unpinned (evictable) content
+   *                     poolAvailable:
+   *                       type: integer
+   *                       description: Bytes remaining before eviction is triggered
+   *                     pinnedUsed:
+   *                       type: integer
+   *                       description: Bytes used by pinned content (not evictable)
+   *                     pinnedCount:
+   *                       type: integer
+   *                       description: Number of pinned CIDs
+   *       '401':
+   *         description: Missing or invalid operator secret
+   */
   // Base /status: writes local fields and falls through to overlay/terminator.
   router.get('/status', (req, res, next) => {
     res.locals.status = {
