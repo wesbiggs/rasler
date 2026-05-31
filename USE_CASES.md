@@ -51,7 +51,7 @@ The `Host:` header is mapped to a bundle MASL, and paths are resolved against th
 
 A filesystem directory is indexed on startup and served at a hostname. The MASL is regenerated automatically whenever the directory is re-indexed (e.g., after a deploy), so the served content updates without a server restart. `index.html` files are aliased to their parent directory path.
 
-**Config:** `VIRTUAL_HOSTS=example.com:/var/www/html`  
+**Config:** `MOUNT_POINTS=example.com:/var/www/html`  
 **Access:** `GET /` on `example.com` resolves against the current bundle MASL for that directory.  
 **Notes:** Files are streamed directly from disk; no bytes are copied to the blob store. Use `STATIC_MAX_HISTORY` to limit how many old MASL versions remain pinned.
 
@@ -59,28 +59,28 @@ A filesystem directory is indexed on startup and served at a hostname. The MASL 
 
 A CAR bundle is uploaded and a hostname is pointed at its MASL CID via the operator API. The served content is frozen at that CID until the operator explicitly updates the mapping. The old MASL CID remains reachable by RASL clients throughout.
 
-**Config:** `POST /upload` (CAR), then `PUT /virtual-hosts/example.com` with `{ maslCid }`.  
+**Config:** `POST /upload` (CAR), then `PUT /mount-points/example.com` with `{ maslCid }`.  
 **Access:** `GET /path` on `example.com` resolves against the pinned bundle MASL.
 
 ### Blue/green or staged rollout
 
-Two CAR builds are uploaded and their MASL CIDs are retained. A single `PUT /virtual-hosts/:hostname` call atomically switches the hostname from one build to the other. During the transition, the old MASL CID is still reachable via RASL for in-flight requests.
+Two CAR builds are uploaded and their MASL CIDs are retained. A single `PUT /mount-points/:hostname` call atomically switches the hostname from one build to the other. During the transition, the old MASL CID is still reachable via RASL for in-flight requests.
 
-**Config:** upload build A and build B as separate CARs; map the hostname to A initially; switch to B by calling `PUT /virtual-hosts/:hostname` with B's `maslCid`.  
+**Config:** upload build A and build B as separate CARs; map the hostname to A initially; switch to B by calling `PUT /mount-points/:hostname` with B's `maslCid`.  
 **Access:** identical to immutable snapshot; the swap is invisible to browser clients.
 
 ### Multi-tenant hosting
 
 Multiple hostnames on a single node, each mapped to a different directory or MASL CID. Static root and runtime-mapped hostnames can coexist.
 
-**Config:** `VIRTUAL_HOSTS=site1.com:/var/www/site1,site2.com:/var/www/site2` for filesystem-backed tenants; `PUT /virtual-hosts/site3.com` for an uploaded CAR tenant.  
+**Config:** `MOUNT_POINTS=site1.com:/var/www/site1,site2.com:/var/www/site2` for filesystem-backed tenants; `PUT /mount-points/site3.com` for an uploaded CAR tenant.  
 **Access:** each hostname resolves independently; RASL access by CID works for all content simultaneously.
 
 ### Static root with runtime override
 
-A directory is configured as a static root so it auto-updates on re-index. A `PUT /virtual-hosts/:hostname` call freezes a specific version (e.g., to hold production stable while a new build is tested). Removing the runtime mapping with `DELETE /virtual-hosts/:hostname` returns the hostname to auto-update behavior.
+A directory is configured as a static root so it auto-updates on re-index. A `PUT /mount-points/:hostname` call freezes a specific version (e.g., to hold production stable while a new build is tested). Removing the runtime mapping with `DELETE /mount-points/:hostname` returns the hostname to auto-update behavior.
 
-**Config:** `VIRTUAL_HOSTS=example.com:/var/www/html`, then `PUT /virtual-hosts/example.com` to pin a snapshot.  
+**Config:** `MOUNT_POINTS=example.com:/var/www/html`, then `PUT /mount-points/example.com` to pin a snapshot.  
 **Access:** the runtime mapping takes priority over the static root mapping while it is set.
 
 ---
