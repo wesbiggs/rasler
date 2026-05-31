@@ -5,7 +5,7 @@ RASLer is a HTTP server that implements [RASL](https://dasl.ing/rasl.html)'s `/.
 ## Features
 
 - **Storage** — content blobs are stored by CID on disk, backed by a SQLite database that enables capacity management and a pluggable eviction policy
-- **DASL & MASL CIDs** — content serving by simple DASL CIDs, or via MASL CIDs with path-based resolution for both single files and website bundles
+- **DASL & MASL CIDs** — content serving by simple DASL CIDs, or via MASL CIDs with path-based resolution for both single files and website bundles as per the proposed specification (see ["RASL Path Resolution via MASL"](RASL_MASL_PROPOSAL.md))
 - **Static roots** — serve files from local directories by CID without copying them into the blob store
 - **Operator API** — upload raw files or CARs, pin/unpin, and evict; manage mount points; status, etc.
 - **Server factory** — compose your own server including RASL functionality
@@ -20,9 +20,15 @@ npm start
 # open http://localhost:3000/api-docs in a browser
 ```
 
+From the API docs UI, you can:
+- Enter the API_SECRET to authenticate
+- Upload one or more files (or CARs with MASL metadata, see [Scripts] for help building) and see their MASL CIDs
+
+Once uploaded, you can access the files at `http://localhost:3000/.well-known/rasl/<cid>`.
+
 ## Slow start
 
-See [USE_CASES.md](USE_CASES.md) for an overview of common deployment patterns.
+See [USE_CASES.md](USE_CASES.md) for an overview of common deployment patterns including virtual hosting and static roots.
 
 ## Configuration
 

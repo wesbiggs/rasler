@@ -1,7 +1,7 @@
 {
   "name": "rasler",
   "version": "0.1.0",
-  "description": "RASLer — RASL protocol node implementation with content-addressed storage and routing",
+  "description": "RASLer — RASL protocol node implementation with content-addressed storage and MASL support",
   "license": "Apache-2.0",
   "author": "Wes Biggs <github@wbig.gs>",
   "repository": {
@@ -22,7 +22,6 @@
   "main": "src/index.js",
   "files": [
     "src/",
-    "public/",
     "openapi.json",
     "LICENSE"
   ],
@@ -43,10 +42,10 @@
     "swagger-ui-express": "5.0.1"
   },
   "devDependencies": {
-    "@jest/globals": "^30.4.1",
-    "jest": "^30.4.2",
+    "@jest/globals": "30.4.1",
+    "jest": "30.4.2",
     "supertest": "7.2.2",
-    "swagger-jsdoc": "^6.3.0"
+    "swagger-jsdoc": "6.3.0"
   },
   "jest": {
     "transform": {},

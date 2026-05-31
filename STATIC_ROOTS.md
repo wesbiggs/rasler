@@ -1,6 +1,6 @@
 # Static roots
 
-Static roots let the operator serve files from existing directories without uploading them or copying bytes into the blob store. This is useful for large files or frequently-updated content managed directly on the filesystem.
+Static roots let you serve files from existing directories without uploading them or copying bytes into the blob store. This is useful for large files or frequently-updated content managed directly on the filesystem.
 
 ## How it works
 
