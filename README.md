@@ -2,9 +2,7 @@
 
 RASLer is a HTTP server that implements [RASL](https://dasl.ing/rasl.html)'s `/.well-known/rasl/` endpoint, backed by content-addressed storage, [MASL](https://dasl.ing/masl.html) metadata support, and a full-featured operator API.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for a code walkthrough and [USE_CASES.md](USE_CASES.md) for deployment patterns.
-
-## What's included
+## Features
 
 - **Storage** — content blobs are stored by CID on disk, backed by a SQLite database that enables capacity management and a pluggable eviction policy
 - **DASL & MASL CIDs** — content serving by simple DASL CIDs, or via MASL CIDs with path-based resolution for both single files and website bundles
@@ -22,6 +20,10 @@ npm start
 # open http://localhost:3000/api-docs in a browser
 ```
 
+## Slow start
+
+See [USE_CASES.md](USE_CASES.md) for an overview of common deployment patterns.
+
 ## Configuration
 
 | Variable | Required | Default | Description |
@@ -34,58 +36,17 @@ npm start
 | `OPERATOR_API_PATH_PREFIX` | No | — | Mount operator API under a path prefix (e.g. `/admin`) |
 | `OPERATOR_CORS_ORIGINS` | No | — | Comma-separated origins allowed cross-origin |
 | `SWAGGER_UI` | No | `false` | Set `true` to enable interactive API docs at `<operator-api-path-prefix>/api-docs` |
-| `STATIC_ROOTS` | No | — | Comma-separated directory paths to serve as static RASL roots (see below) |
+| `STATIC_ROOTS` | No | — | Comma-separated directory paths to serve as static RASL roots (see [STATIC_ROOTS.md](STATIC_ROOTS.md)) |
 | `STATIC_MAX_HISTORY` | No | — | Maximum pinned MASL versions per static root; older versions are unpinned for LRU eviction |
-| `MOUNT_POINTS` | No | — | Comma-separated mount point definitions mapping `hostname[/prefix]:directory` (see below) |
+| `MOUNT_POINTS` | No | — | Comma-separated mount point definitions mapping `hostname[/prefix]:directory` (see [MOUNT_POINTS.md](MOUNT_POINTS.md)) |
 
 ## Static roots
 
-Static roots let the operator serve files from existing directories without uploading them or copying bytes into the blob store. This is useful for large files or frequently-updated content managed directly on the filesystem.
-
-### How it works
-
-On startup, each directory listed in `STATIC_ROOTS` is scanned. For each file:
-
-1. The file is stat'd and compared against the database (size + mtime). If both match, the stored CID is reused and the file is not read.
-2. If the file is new or modified, it is hashed to compute its CID.
-
-A single bundle MASL is generated for each root, with all file paths preserved relative to the root directory. `index.html` files additionally register an alias for their parent directory path. Scanning runs in the background so the server is available immediately; on a warm restart (no file changes) the indexing window is negligible.
-
-Files are registered in SQLite with `source_path` set to their real path. They are never copied to the blob store, and they are not counted against `TOTAL_CAPACITY`. Static entries cannot be evicted by the LRU policy.
-
-### Security
-
-Only paths listed in `STATIC_ROOTS` at startup are trusted. Symlinks that resolve outside their root are skipped during indexing. At serve time, each file's `realpath` is re-verified against the configured roots, so a symlink added after startup cannot be used to escape the root.
-
-### Versioning
-
-Each time a root is re-indexed, a new bundle MASL is generated that links to the previous one via the `prev` field (as defined in the [MASL spec](https://dasl.ing/masl.html)). Clients holding an old MASL CID continue to work — the old MASL remains in the blob store as a pinned entry. Only the new MASL CID is needed to reach any updated files.
-
-`STATIC_MAX_HISTORY` limits how many MASL versions stay pinned per root. Once the limit is exceeded, the oldest entry is unpinned and becomes eligible for LRU eviction. The `prev` chain remains intact in the MASL documents themselves, so an operator can traverse it and use `DELETE /content/:cid` to reclaim space sooner if needed.
-
-### Content types
-
-MIME types are inferred from file extensions. Supported types include `text/html`, `text/css`, `application/javascript`, `application/json`, common image and font formats, `video/mp4`, `video/webm`, and `application/pdf`. Unknown extensions are served as `application/octet-stream`.
+See [STATIC_ROOTS.md](STATIC_ROOTS.md).
 
 ## Mount points
 
-Mount points map the HTTP `Host:` header (and an optional URL path prefix) to a static root directory, letting the node serve a website at a plain URL (e.g. `https://example.com/about.html`) without a reverse proxy like `nginx`.
-
-### Configuration
-
-```
-MOUNT_POINTS=example.com:/var/www/html,example.com/docs:/var/www/docs,docs.example.com:/var/www/docs
-```
-
-Each entry maps a hostname with an optional URL path prefix to a directory. The directory is automatically added to `STATIC_ROOTS` — no need to list it twice. More specific (longer) prefixes take priority. On every request the current bundle MASL for that root is read from memory, so the served content updates automatically after a re-index without a server restart.
-
-### Request flow
-
-1. The `Host:` header is matched against configured hostnames; the URL path prefix is matched to select the most specific mount point.
-2. The path prefix is stripped and the remaining path is resolved against the current bundle MASL for that root.
-3. Bytes are streamed directly from disk (the same static-root pipeline).
-4. `/.well-known/rasl/...` paths always pass through to the RASL router unchanged.
-5. If the root has not yet been indexed (startup window), the server returns `503`.
+See [MOUNT_POINTS.md](MOUNT_POINTS.md).
 
 ## API
 
@@ -180,7 +141,24 @@ app.use(makeOperatorRouter({ store, selfOrigin: config.origin, apiSecret: config
 finalizeApp(app, config);
 ```
 
-## Scripts
+## Utilities
+
+The following utility script is included.
+
+```bash
+# Build a CAR file (with MASL bundle header) from a static website directory tree
+npm run get-in-the-car <input-dir> [output.car]
+```
+
+## Development
+
+Contributions are welcome! Please use GitHub Issues to discuss or propose improvements or file bugs.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for a code walkthrough.
+
+Pull requests that make changes to the API should include updated JSDoc and a freshly generated `openapi.json`.
+
+### Scripts
 
 ```bash
 # Run the node
@@ -191,7 +169,4 @@ npm test
 
 # Regenerate openapi.json from JSDoc in src/routes/operator.js
 npm run generate:openapi
-
-# Build a CAR file (with MASL bundle header) from a static website directory tree
-npm run get-in-the-car <input-dir> [output.car]
 ```
