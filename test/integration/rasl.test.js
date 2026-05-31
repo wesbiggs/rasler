@@ -384,10 +384,16 @@ describe('RASL routes', () => {
       }
     });
 
-    it('second index links new MASL to previous via prev', async () => {
+    it('re-index with no file changes returns the same MASL CID', async () => {
+      const cssCid = await computeDataCid(Buffer.from('body { color: red }'));
+      const maslCid1 = staticStore.getContentMeta(cssCid)?.masl_cid;
+      const maslCid2 = await indexStaticRoot(staticDir, staticStore);
+      expect(maslCid2).toBe(maslCid1);
+    });
+
+    it('re-index after file change links new MASL to previous via prev', async () => {
       const { parseMasl } = await import('../../src/masl/document.js');
-      // Re-indexing the same root (even without file changes) produces a new
-      // MASL CID because it now includes a prev link.
+      writeFileSync(join(staticDir, 'style.css'), 'body { color: blue }');
       const maslCid2 = await indexStaticRoot(staticDir, staticStore);
       const doc2 = parseMasl(staticStore.getContent(maslCid2).bytes);
       expect(doc2.prev?.$link).toBeTruthy();
@@ -396,7 +402,8 @@ describe('RASL routes', () => {
     it('maxHistory unpins MASLs beyond the configured depth', async () => {
       const { parseMasl } = await import('../../src/masl/document.js');
       // beforeEach already ran one index (maslCid1 is pinned).
-      // Run a second index with maxHistory=1: only the new MASL stays pinned.
+      // Modify a file so a second MASL is generated, then check history pruning.
+      writeFileSync(join(staticDir, 'style.css'), 'body { color: blue }');
       const maslCid2 = await indexStaticRoot(staticDir, staticStore, { maxHistory: 1 });
       const prevCid = parseMasl(staticStore.getContent(maslCid2).bytes).prev?.$link;
       expect(prevCid).toBeTruthy();

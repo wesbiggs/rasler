@@ -45,6 +45,7 @@ export async function indexStaticRoot(rootPath, store, { maxHistory = null } = {
   const realRoot = await realpath(rootPath);
   const fileInfos = [];
   const visitedPaths = new Set();
+  let changed = false;
 
   for await (const filePath of walkDir(realRoot)) {
     let realFile;
@@ -62,6 +63,7 @@ export async function indexStaticRoot(rootPath, store, { maxHistory = null } = {
     if (existing && existing.size === size && existing.source_mtime === mtime) {
       cid = existing.cid;
     } else {
+      changed = true;
       const bytes = await readFile(realFile);
       cid = await computeDataCid(bytes);
     }
@@ -74,11 +76,23 @@ export async function indexStaticRoot(rootPath, store, { maxHistory = null } = {
   // Remove DB entries for files deleted since the last startup.
   for (const entry of dbListStaticContent(store.db)) {
     if (entry.source_path?.startsWith(realRoot + sep) && !visitedPaths.has(entry.source_path)) {
+      changed = true;
       dbDeleteContent(store.db, entry.cid);
     }
   }
 
   if (fileInfos.length === 0) return null;
+
+  // Find the existing MASL CID for this root (if any) to link as prev.
+  const prevEntry = dbListStaticContent(store.db)
+    .find(e => e.source_path?.startsWith(realRoot + sep));
+  const prevMaslCid = prevEntry?.masl_cid ?? null;
+
+  // Nothing changed — reuse the existing MASL rather than generating a new one.
+  if (!changed && prevMaslCid) {
+    store.staticRootMasls.set(realRoot, prevMaslCid);
+    return prevMaslCid;
+  }
 
   // Sort for deterministic MASL CIDs across restarts.
   fileInfos.sort((a, b) => a.relPath.localeCompare(b.relPath));
@@ -91,11 +105,6 @@ export async function indexStaticRoot(rootPath, store, { maxHistory = null } = {
       resources.push({ path: dir === '/' ? '/' : dir + '/', cid, size, contentType });
     }
   }
-
-  // Find the existing MASL CID for this root (if any) to link as prev.
-  const prevEntry = dbListStaticContent(store.db)
-    .find(e => e.source_path?.startsWith(realRoot + sep));
-  const prevMaslCid = prevEntry?.masl_cid ?? null;
 
   const name = basename(realRoot);
   const { cborBytes, maslCid } = await createBundleMasl({ name, resources, prevMaslCid });
