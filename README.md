@@ -2,6 +2,8 @@
 
 RASLer is a HTTP server that implements [RASL](https://dasl.ing/rasl.html)'s `/.well-known/rasl/` endpoint, backed by content-addressed storage, [MASL](https://dasl.ing/masl.html) metadata support, and a full-featured operator API.
 
+See [ARCHITECTURE.md](ARCHITECTURE.md) for a code walkthrough and [USE_CASES.md](USE_CASES.md) for deployment patterns.
+
 ## What's included
 
 - **Storage** — content blobs are stored by CID on disk, backed by a SQLite database that enables capacity management and a pluggable eviction policy
