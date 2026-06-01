@@ -42,9 +42,9 @@ See [USE_CASES](USE_CASES.md) for an overview of common deployment patterns incl
 | `OPERATOR_API_PATH_PREFIX` | No | — | Mount operator API under a path prefix (e.g. `/admin`) |
 | `OPERATOR_CORS_ORIGINS` | No | — | Comma-separated origins allowed cross-origin |
 | `SWAGGER_UI` | No | `true` | Set `false` to disable the interactive API docs at `<operator-api-path-prefix>/api-docs` |
-| `STATIC_ROOTS` | No | — | Comma-separated directory paths to serve as static RASL roots (see [STATIC_ROOTS](STATIC_ROOTS.md)) |
+| `STATIC_ROOTS` | No | — | Comma-separated directory paths to serve as static RASL roots (see [STATIC_ROOTS.md](STATIC_ROOTS.md)) |
 | `STATIC_MAX_HISTORY` | No | — | Maximum pinned MASL versions per static root; older versions are unpinned for LRU eviction |
-| `MOUNT_POINTS` | No | — | Comma-separated mount point definitions mapping `hostname[/prefix]:directory` (see [Mount Points discussion in STATIC_ROOTS](STATIC_ROOTS.md#mount-points)) |
+| `MOUNT_POINTS` | No | — | Comma-separated mount point definitions mapping `hostname[/prefix]:directory` (see [MOUNT_POINTS.md](MOUNT_POINTS.md)) |
 
 ## API
 
