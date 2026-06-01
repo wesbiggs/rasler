@@ -7,6 +7,7 @@ RASLer is a HTTP server that implements [RASL](https://dasl.ing/rasl.html)'s `/.
 - **Storage** — content blobs are stored by CID on disk, backed by a SQLite database that enables capacity management and a pluggable eviction policy
 - **DASL & MASL CIDs** — content serving by simple DASL CIDs, or via MASL CIDs with path-based resolution for both single files and website bundles as per the proposed specification (see ["RASL Path Resolution via MASL"](RASL_MASL_PROPOSAL.md))
 - **Static roots** — serve files from local directories by CID without copying them into the blob store
+- **Mount points** - use human-friendly URLs with virtual hosts and MASL paths
 - **Operator API** — upload raw files or CARs, pin/unpin, and evict; manage mount points; status, etc.
 - **Server factory** — compose your own server including RASL functionality
 
@@ -42,9 +43,9 @@ See [USE_CASES](USE_CASES.md) for an overview of common deployment patterns incl
 | `OPERATOR_API_PATH_PREFIX` | No | — | Mount operator API under a path prefix (e.g. `/admin`) |
 | `OPERATOR_CORS_ORIGINS` | No | — | Comma-separated origins allowed cross-origin |
 | `SWAGGER_UI` | No | `true` | Set `false` to disable the interactive API docs at `<operator-api-path-prefix>/api-docs` |
-| `STATIC_ROOTS` | No | — | Comma-separated directory paths to serve as static RASL roots (see [STATIC_ROOTS.md](STATIC_ROOTS.md)) |
+| `STATIC_ROOTS` | No | — | Comma-separated directory paths to serve as static RASL roots (see [STATIC_ROOTS](STATIC_ROOTS.md)) |
 | `STATIC_MAX_HISTORY` | No | — | Maximum pinned MASL versions per static root; older versions are unpinned for LRU eviction |
-| `MOUNT_POINTS` | No | — | Comma-separated mount point definitions mapping `hostname[/prefix]:directory` (see [MOUNT_POINTS.md](MOUNT_POINTS.md)) |
+| `MOUNT_POINTS` | No | — | Comma-separated mount point definitions mapping `hostname[/prefix]:directory` (see [MOUNT_POINTS](MOUNT_POINTS.md)) |
 
 ## API
 
@@ -69,7 +70,7 @@ See [USE_CASES](USE_CASES.md) for an overview of common deployment patterns incl
 | `GET` | `/content/:cid` | Get content metadata |
 | `DELETE` | `/content/:cid` | Evict a CID |
 | `GET` | `/static-roots` | List configured static roots and their current MASL CIDs |
-| `GET` | `/mount-points` | List all mount points (config and runtime) with their MASL CIDs |
+| `GET` | `/mount-points` | List all mount points (static and runtime) with their MASL CIDs |
 | `PUT` | `/mount-points/:hostname[/:prefix]` | Map a hostname (with optional path prefix) to a held bundle MASL CID (runtime, persisted) |
 | `DELETE` | `/mount-points/:hostname[/:prefix]` | Remove a runtime mount point mapping |
 
