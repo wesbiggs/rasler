@@ -15,7 +15,7 @@ RASLer is a HTTP server that implements [RASL](https://dasl.ing/rasl.html)'s `/.
 ```bash
 npm install
 cp .env.example .env
-# edit .env and set ORIGIN, API_SECRET, and SWAGGER_UI=true
+# edit .env and set API_SECRET
 npm start
 # open http://localhost:3000/api-docs in a browser
 ```
@@ -34,17 +34,17 @@ See [USE_CASES](USE_CASES.md) for an overview of common deployment patterns incl
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `ORIGIN` | Yes | — | This node's public origin, protocol included (e.g. `https://node1.example.com` or `http://localhost:3000`). Used in `Link: rel="duplicate"` headers. A bare hostname without protocol is accepted and defaults to `https://`. |
+| `ORIGIN` | No | `http://localhost:<PORT>` | This node's public origin, protocol included (e.g. `https://node1.example.com`). Used in `Link: rel="duplicate"` headers. A bare hostname without protocol is accepted and defaults to `https://`. |
 | `API_SECRET` | Yes | — | Pre-shared secret to send as `x-rasl-operator-secret` header |
 | `PORT` | No | `3000` | HTTP listen port |
 | `DATA_DIR` | No | `./data` | Directory for the SQLite database and content blobs |
 | `TOTAL_CAPACITY` | No | `1G` | Storage budget (`200M`, `1G`, `2GB`, plain bytes) |
 | `OPERATOR_API_PATH_PREFIX` | No | — | Mount operator API under a path prefix (e.g. `/admin`) |
 | `OPERATOR_CORS_ORIGINS` | No | — | Comma-separated origins allowed cross-origin |
-| `SWAGGER_UI` | No | `false` | Set `true` to enable interactive API docs at `<operator-api-path-prefix>/api-docs` |
+| `SWAGGER_UI` | No | `true` | Set `false` to disable the interactive API docs at `<operator-api-path-prefix>/api-docs` |
 | `STATIC_ROOTS` | No | — | Comma-separated directory paths to serve as static RASL roots (see [STATIC_ROOTS](STATIC_ROOTS.md)) |
 | `STATIC_MAX_HISTORY` | No | — | Maximum pinned MASL versions per static root; older versions are unpinned for LRU eviction |
-| `MOUNT_POINTS` | No | — | Comma-separated mount point definitions mapping `hostname[/prefix]:directory` (see [Mount Points discussion in STATIC_ROOTS](STATIC_ROOTS.md#Mount+Points)) |
+| `MOUNT_POINTS` | No | — | Comma-separated mount point definitions mapping `hostname[/prefix]:directory` (see [Mount Points discussion in STATIC_ROOTS](STATIC_ROOTS.md#mount-points)) |
 
 ## API
 
