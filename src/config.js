@@ -20,7 +20,13 @@ const config = Object.freeze({
   port,
   dataDir: resolve(optional('DATA_DIR', './data')),
   totalCapacity: parseSize(optional('TOTAL_CAPACITY', '1G')),
-  apiSecret: required('API_SECRET'),
+  apiSecret: (() => {
+    const secret = required('API_SECRET');
+    if (secret === 'change-me-to-a-strong-random-secret') {
+      throw new Error('API_SECRET is still set to the default placeholder — please change it before starting the server');
+    }
+    return secret;
+  })(),
   swaggerUi: optional('SWAGGER_UI', 'true') === 'true',
   operatorApiPathPrefix: normalizeMountPath(optional('OPERATOR_API_PATH_PREFIX', '')),
   operatorCorsOrigins: optional('OPERATOR_CORS_ORIGINS', '')
