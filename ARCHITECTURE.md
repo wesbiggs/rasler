@@ -180,6 +180,62 @@ Both expect the caller to then mount the operator router and call `finalizeApp()
 
 The operator router (`makeOperatorRouter`) and RASL router (`makeRaslRouter`) are also exported individually for fine-grained composition. The `/status` endpoint uses a two-part design: `makeOperatorRouter` writes base fields to `res.locals.status` and calls `next()`; `makeOperatorStatusTerminator` (or an overlay router) sends the final response. This lets an embedding application add extra fields to `/status` without forking the base router.
 
+### Standalone
+
+```js
+import { openDb } from 'rasler/src/storage/db.js';
+import { Store } from 'rasler/src/storage/store.js';
+import { createApp, finalizeApp } from 'rasler/src/server.js';
+import { makeRaslNotFoundHandler } from 'rasler/src/routes/rasl.js';
+import { makeOperatorRouter } from 'rasler/src/routes/operator.js';
+import { indexStaticRoots } from 'rasler/src/static.js';
+
+const db = openDb('./data');
+const store = new Store(db, './data', 1024 * 1024 * 1024, {
+  staticRoots: ['/var/www/html'],
+});
+
+const config = {
+  origin: 'https://mynode.example.com',
+  port: 3000,
+  apiSecret: process.env.API_SECRET,
+  totalCapacity: 1024 * 1024 * 1024,
+  dataDir: './data',
+  operatorCorsOrigins: [],
+  operatorApiPathPrefix: '',
+  swaggerUi: false,
+  staticRoots: ['/var/www/html'],
+  staticMaxHistory: 3,
+};
+
+if (config.staticRoots.length > 0) {
+  indexStaticRoots(config.staticRoots, store, { maxHistory: config.staticMaxHistory });
+}
+
+const app = createApp({ store, config });
+app.use(makeRaslNotFoundHandler());
+app.use(makeOperatorRouter({ store, selfOrigin: config.origin, apiSecret: config.apiSecret }));
+finalizeApp(app, config);
+
+app.listen(config.port);
+```
+
+### Adding to an existing Express 5 app
+
+Use `addRaslerMiddleware` instead of `createApp` to mount RASLer onto an app you already control. `trust proxy` is not set — configure it on your app as needed.
+
+```js
+import { addRaslerMiddleware, finalizeApp } from 'rasler/src/server.js';
+import { makeRaslNotFoundHandler } from 'rasler/src/routes/rasl.js';
+import { makeOperatorRouter } from 'rasler/src/routes/operator.js';
+
+// your existing app
+addRaslerMiddleware(app, { store, config });
+app.use(makeRaslNotFoundHandler());
+app.use(makeOperatorRouter({ store, selfOrigin: config.origin, apiSecret: config.apiSecret }));
+finalizeApp(app, config);
+```
+
 ## OpenAPI
 
 `openapi.json` is generated from `@openapi` JSDoc blocks in `src/routes/operator.js` by running `npm run generate:openapi` (via `scripts/generate-openapi.js` using `swagger-jsdoc`). The file is committed and served via Swagger UI when `SWAGGER_UI=true`.

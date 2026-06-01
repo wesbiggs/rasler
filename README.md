@@ -104,5 +104,3 @@ npm test
 # Regenerate openapi.json from JSDoc in src/routes/operator.js
 npm run generate:openapi
 ```
-
-You can also [use RASLer as a library](LIBRARY_USAGE.md) in your own apps.
