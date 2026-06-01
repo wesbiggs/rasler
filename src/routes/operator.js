@@ -623,7 +623,7 @@ export function makeOperatorRouter({ store, selfOrigin, apiSecret, corsOrigins =
       const key = `${mp.hostname}|${mp.prefix}`;
       if (seen.has(key)) continue;
       let maslCid = null;
-      try { maslCid = store.staticRootMasls.get(realpathSync(mp.directory)) ?? null; } catch {}
+      try { maslCid = store.staticRootMasls.get(realpathSync(mp.directory)) ?? null; } catch { /* directory may not exist */ }
       result.push({ hostname: mp.hostname, mountPath: mp.prefix || '/', path: mp.directory, maslCid, source: 'static' });
     }
 

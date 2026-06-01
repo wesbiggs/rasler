@@ -440,9 +440,9 @@ describe('Operator API routes', () => {
 });
 
 describe('GET /content/:cid', () => {
-  let app, store, cleanup, apiSecret;
+  let app, cleanup, apiSecret;
 
-  beforeEach(() => ({ app, store, cleanup, apiSecret } = makeBaseTestApp()));
+  beforeEach(() => ({ app, cleanup, apiSecret } = makeBaseTestApp()));
   afterEach(() => cleanup());
 
   it('returns metadata for a held CID', async () => {

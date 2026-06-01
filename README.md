@@ -21,14 +21,14 @@ npm start
 ```
 
 From the API docs UI, you can:
-- Enter the API_SECRET to authenticate
+- Enter `API_SECRET` to authenticate
 - Upload one or more files (or CARs with MASL metadata, see [Utilities](#utilities) for help building) and record their MASL CIDs
 
-Once uploaded, you can access the files at `http://localhost:3000/.well-known/rasl/<cid>`.
+Once uploaded, you can access the files at `http://localhost:3000/.well-known/rasl/<cid>/`.
 
 ## Slow start
 
-See [USE_CASES.md](USE_CASES.md) for an overview of common deployment patterns including virtual hosting and static roots.
+See [USE_CASES](USE_CASES.md) for an overview of common deployment patterns including virtual hosting and static roots.
 
 ## Configuration
 
@@ -42,9 +42,9 @@ See [USE_CASES.md](USE_CASES.md) for an overview of common deployment patterns i
 | `OPERATOR_API_PATH_PREFIX` | No | — | Mount operator API under a path prefix (e.g. `/admin`) |
 | `OPERATOR_CORS_ORIGINS` | No | — | Comma-separated origins allowed cross-origin |
 | `SWAGGER_UI` | No | `false` | Set `true` to enable interactive API docs at `<operator-api-path-prefix>/api-docs` |
-| `STATIC_ROOTS` | No | — | Comma-separated directory paths to serve as static RASL roots (see [STATIC_ROOTS.md](STATIC_ROOTS.md)) |
+| `STATIC_ROOTS` | No | — | Comma-separated directory paths to serve as static RASL roots (see [STATIC_ROOTS](STATIC_ROOTS.md)) |
 | `STATIC_MAX_HISTORY` | No | — | Maximum pinned MASL versions per static root; older versions are unpinned for LRU eviction |
-| `MOUNT_POINTS` | No | — | Comma-separated mount point definitions mapping `hostname[/prefix]:directory` (see [STATIC_ROOTS.md](STATIC_ROOTS.md)) |
+| `MOUNT_POINTS` | No | — | Comma-separated mount point definitions mapping `hostname[/prefix]:directory` (see [Mount Points discussion in STATIC_ROOTS](STATIC_ROOTS.md#Mount+Points)) |
 
 ## API
 
@@ -52,9 +52,9 @@ See [USE_CASES.md](USE_CASES.md) for an overview of common deployment patterns i
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/.well-known/rasl/:cid` | Retrieve content by CID |
+| `GET` | `/.well-known/rasl/:cid` | Retrieve raw content by CID |
 | `HEAD` | `/.well-known/rasl/:cid` | Same as GET, no body |
-| `GET` | `/.well-known/rasl/:cid/*` | Path suffix resolved against MASL document at CID |
+| `GET` | `/.well-known/rasl/:cid/*` | Retrieve content via MASL document CID; path suffix resolved against MASL resources |
 | `HEAD` | `/.well-known/rasl/:cid/*` | Same as GET, no body |
 
 ### Operator API (requires `x-rasl-operator-secret` header)
@@ -75,6 +75,8 @@ See [USE_CASES.md](USE_CASES.md) for an overview of common deployment patterns i
 
 The Operator API can be relocated via the `OPERATOR_API_PATH_PREFIX` environment option.
 
+Full request/response details are in `openapi.json` and can be viewed and used interactively if `SWAGGER_UI=true`.
+
 ## Utilities
 
 The following utility script is included.
@@ -88,7 +90,7 @@ npm run get-in-the-car <input-dir> [output.car]
 
 Contributions are welcome! Please use GitHub Issues to discuss or propose improvements or file bugs.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for a code walkthrough.
+See [ARCHITECTURE](ARCHITECTURE.md) for a code walkthrough as well as details on using RASLer as a library.
 
 Pull requests that make changes to the API should include updated JSDoc and a freshly generated `openapi.json`.
 
@@ -98,8 +100,11 @@ Pull requests that make changes to the API should include updated JSDoc and a fr
 # Run the node
 npm start
 
-# Run tests
+# Run tests (includes lint)
 npm test
+
+# Lint only
+npm run lint
 
 # Regenerate openapi.json from JSDoc in src/routes/operator.js
 npm run generate:openapi

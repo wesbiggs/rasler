@@ -21,7 +21,7 @@ function getPathAfterCid(req, cid) {
 
 // Streams a data CID's bytes to the response. Uses getContentStream so that
 // static (filesystem-backed) entries are served without copying to memory.
-function pipeContent(store, cid, res, next) {
+function pipeContent(store, cid, res, _next) {
   const result = store.getContentStream(cid);
   if (!result) return res.status(502).json({ error: 'Content unavailable' });
   res.set('content-length', String(result.meta.size));

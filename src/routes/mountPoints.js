@@ -29,8 +29,8 @@ export function makeMountPointRouter({ store, mountPoints, selfOrigin }) {
     // Leave RASL retrieval paths to the RASL router.
     if (req.path.startsWith('/.well-known/rasl/')) return next();
 
-    let maslCid = null;
-    let maslPath = req.path || '/';
+    let maslCid;
+    let maslPath;
 
     // Runtime mappings take priority over static-root mappings.
     const runtimeMp = findMountPoint(store.runtimeMountPoints, req.hostname, req.path);
