@@ -1,5 +1,6 @@
 import { readFile, readdir, realpath, stat } from 'node:fs/promises';
 import { join, relative, basename, dirname, sep } from 'node:path';
+import micromatch from 'micromatch';
 import { computeDataCid } from './crypto/cid.js';
 import { createBundleMasl, parseMasl } from './masl/document.js';
 import { mimeType } from './util/mime.js';
@@ -26,10 +27,14 @@ function pruneHistory(store, prevMaslCid, maxHistory) {
   }
 }
 
-async function* walkDir(dir) {
+async function* walkDir(dir, rootDir, ignore) {
   for (const entry of await readdir(dir, { withFileTypes: true })) {
     const full = join(dir, entry.name);
-    if (entry.isDirectory()) yield* walkDir(full);
+    if (ignore.length > 0) {
+      const rel = relative(rootDir, full).replace(/\\/g, '/');
+      if (micromatch.isMatch(rel, ignore)) continue;
+    }
+    if (entry.isDirectory()) yield* walkDir(full, rootDir, ignore);
     else if (entry.isFile()) yield full;
   }
 }
@@ -39,15 +44,15 @@ async function* walkDir(dir) {
 // MASL CID. Files are never copied to the blob store. Symlinks that resolve
 // outside the root are silently skipped.
 //
-// On repeated startups, files whose size and mtime match the stored values are
+// On repeated calls, files whose size and mtime match the stored values are
 // not re-read or re-hashed. DB entries for files that no longer exist are removed.
-export async function indexStaticRoot(rootPath, store, { maxHistory = null } = {}) {
+export async function indexStaticRoot(rootPath, store, { maxHistory = null, ignore = [] } = {}) {
   const realRoot = await realpath(rootPath);
   const fileInfos = [];
   const visitedPaths = new Set();
   let changed = false;
 
-  for await (const filePath of walkDir(realRoot)) {
+  for await (const filePath of walkDir(realRoot, realRoot, ignore)) {
     let realFile;
     try { realFile = await realpath(filePath); } catch { continue; }
     if (realFile !== realRoot && !realFile.startsWith(realRoot + sep)) continue;
@@ -127,12 +132,13 @@ export async function indexStaticRoot(rootPath, store, { maxHistory = null } = {
 
 export async function indexStaticRoots(staticRoots, store, { maxHistory = null } = {}) {
   for (const root of staticRoots) {
+    const { directory, ignore = [] } = root;
     try {
-      const maslCid = await indexStaticRoot(root, store, { maxHistory });
-      if (maslCid) console.log(`Static root indexed: ${root} → MASL ${maslCid}`);
-      else console.warn(`Static root empty, skipped: ${root}`);
+      const maslCid = await indexStaticRoot(directory, store, { maxHistory, ignore });
+      if (maslCid) console.log(`Static root indexed: ${directory} → MASL ${maslCid}`);
+      else console.warn(`Static root empty, skipped: ${directory}`);
     } catch (err) {
-      console.error(`Failed to index static root ${root}: ${err.message}`);
+      console.error(`Failed to index static root ${directory}: ${err.message}`);
     }
   }
 }

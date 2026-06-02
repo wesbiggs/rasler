@@ -66,7 +66,6 @@ export function addRaslerMiddleware(app, { store, config, openApiOverlays = [] }
 export function createApp({ store, config, openApiOverlays = [] }) {
   const app = express();
   app.set('trust proxy', 1);
-  app.use(express.static(resolve(__dirname, '..', 'public')));
   addRaslerMiddleware(app, { store, config, openApiOverlays });
   return app;
 }

@@ -2,7 +2,7 @@ import { describe, it, expect } from '@jest/globals';
 import { resolve } from 'path';
 import { parseSize } from '../../src/util/parseSize.js';
 import { normalizeMountPath } from '../../src/util/normalizeMountPath.js';
-import { parseMountPoints, parseStaticRoots } from '../../src/util/parseEnvConfig.js';
+import { parseJsonStaticRoots, parseJsonMountPoints } from '../../src/util/parseJsonConfig.js';
 
 describe('parseSize', () => {
   it('parses plain byte counts', () => {
@@ -97,98 +97,109 @@ describe('normalizeMountPath', () => {
   });
 });
 
-describe('parseStaticRoots', () => {
-  it('returns empty array when both env values are empty', () => {
-    expect(parseStaticRoots('', '')).toEqual([]);
-  });
-
-  it('returns empty array when both env values are undefined', () => {
-    expect(parseStaticRoots()).toEqual([]);
-  });
-
-  it('does not include CWD for whitespace-only or blank input', () => {
-    const result = parseStaticRoots('  ', '  ');
-    expect(result).toEqual([]);
-    expect(result).not.toContain(process.cwd());
-  });
-
-  it('resolves explicit STATIC_ROOTS entries', () => {
-    expect(parseStaticRoots('/var/www/html', '')).toEqual(['/var/www/html']);
-  });
-
-  it('resolves relative paths against CWD', () => {
-    expect(parseStaticRoots('data/site', '')).toEqual([resolve('data/site')]);
-  });
-
-  it('includes directories from MOUNT_POINTS', () => {
-    const result = parseStaticRoots('', 'example.com:/var/www/html');
-    expect(result).toEqual(['/var/www/html']);
-  });
-
-  it('deduplicates when STATIC_ROOTS and MOUNT_POINTS share a directory', () => {
-    const result = parseStaticRoots('/var/www/html', 'example.com:/var/www/html');
-    expect(result).toEqual(['/var/www/html']);
-  });
-
-  it('collects directories from multiple MOUNT_POINTS entries', () => {
-    const result = parseStaticRoots('', 'a.com:/var/www/a,b.com:/var/www/b');
-    expect(result).toEqual(['/var/www/a', '/var/www/b']);
-  });
-
-  it('skips malformed MOUNT_POINTS entries with missing directory', () => {
-    const result = parseStaticRoots('', 'example.com:');
-    expect(result).toEqual([]);
-    expect(result).not.toContain(process.cwd());
-  });
-});
-
-describe('parseMountPoints', () => {
+describe('parseJsonStaticRoots', () => {
   it('returns empty array for empty input', () => {
-    expect(parseMountPoints('')).toEqual([]);
+    expect(parseJsonStaticRoots([])).toEqual([]);
   });
 
   it('returns empty array for undefined input', () => {
-    expect(parseMountPoints()).toEqual([]);
+    expect(parseJsonStaticRoots()).toEqual([]);
+  });
+
+  it('parses a string entry', () => {
+    expect(parseJsonStaticRoots(['/var/www/html'])).toEqual([
+      { directory: '/var/www/html', watch: false, ignore: [] },
+    ]);
+  });
+
+  it('resolves relative paths against CWD', () => {
+    expect(parseJsonStaticRoots(['data/site'])).toEqual([
+      { directory: resolve('data/site'), watch: false, ignore: [] },
+    ]);
+  });
+
+  it('parses an object entry with defaults', () => {
+    expect(parseJsonStaticRoots([{ path: '/var/www/html' }])).toEqual([
+      { directory: '/var/www/html', watch: false, ignore: [] },
+    ]);
+  });
+
+  it('parses an object entry with watch and ignore', () => {
+    const result = parseJsonStaticRoots([{ path: '/var/www/html', watch: true, ignore: ['**/*.log', '.DS_Store'] }]);
+    expect(result).toEqual([
+      { directory: '/var/www/html', watch: true, ignore: ['**/*.log', '.DS_Store'] },
+    ]);
+  });
+
+  it('parses a mix of string and object entries', () => {
+    const result = parseJsonStaticRoots(['/var/www/a', { path: '/var/www/b', watch: true }]);
+    expect(result).toEqual([
+      { directory: '/var/www/a', watch: false, ignore: [] },
+      { directory: '/var/www/b', watch: true, ignore: [] },
+    ]);
+  });
+
+  it('skips blank string entries', () => {
+    expect(parseJsonStaticRoots(['', '  '])).toEqual([]);
+  });
+
+  it('skips malformed object entries', () => {
+    expect(parseJsonStaticRoots([{ watch: true }, null, 42])).toEqual([]);
+  });
+
+  it('ignore defaults to [] when not an array', () => {
+    const result = parseJsonStaticRoots([{ path: '/var/www/html', ignore: 'bad' }]);
+    expect(result[0].ignore).toEqual([]);
+  });
+});
+
+describe('parseJsonMountPoints', () => {
+  it('returns empty array for empty input', () => {
+    expect(parseJsonMountPoints([])).toEqual([]);
+  });
+
+  it('returns empty array for undefined input', () => {
+    expect(parseJsonMountPoints()).toEqual([]);
   });
 
   it('parses a hostname-only entry', () => {
-    const result = parseMountPoints('example.com:/var/www/html');
+    const result = parseJsonMountPoints([{ hostname: 'example.com', directory: '/var/www/html' }]);
     expect(result).toEqual([{ hostname: 'example.com', prefix: '', directory: '/var/www/html' }]);
   });
 
-  it('parses a hostname with path prefix', () => {
-    const result = parseMountPoints('example.com/docs:/var/www/docs');
+  it('parses an entry with a path prefix', () => {
+    const result = parseJsonMountPoints([{ hostname: 'example.com', prefix: '/docs', directory: '/var/www/docs' }]);
     expect(result).toEqual([{ hostname: 'example.com', prefix: '/docs', directory: '/var/www/docs' }]);
   });
 
   it('normalizes the path prefix (strips trailing slash)', () => {
-    const result = parseMountPoints('example.com/docs/:/var/www/docs');
+    const result = parseJsonMountPoints([{ hostname: 'example.com', prefix: '/docs/', directory: '/var/www/docs' }]);
     expect(result).toEqual([{ hostname: 'example.com', prefix: '/docs', directory: '/var/www/docs' }]);
   });
 
   it('sorts longest prefix first', () => {
-    const result = parseMountPoints('example.com:/var/www/html,example.com/docs:/var/www/docs');
+    const result = parseJsonMountPoints([
+      { hostname: 'example.com', directory: '/var/www/html' },
+      { hostname: 'example.com', prefix: '/docs', directory: '/var/www/docs' },
+    ]);
     expect(result[0].prefix).toBe('/docs');
     expect(result[1].prefix).toBe('');
   });
 
-  it('skips entries with missing directory', () => {
-    const result = parseMountPoints('example.com:');
-    expect(result).toEqual([]);
-  });
-
-  it('skips entries with no colon separator', () => {
-    const result = parseMountPoints('example.com');
-    expect(result).toEqual([]);
-  });
-
-  it('skips entries with missing hostname', () => {
-    const result = parseMountPoints(':/var/www/html');
-    expect(result).toEqual([]);
-  });
-
   it('resolves relative directory paths against CWD', () => {
-    const result = parseMountPoints('example.com:data/site');
+    const result = parseJsonMountPoints([{ hostname: 'example.com', directory: 'data/site' }]);
     expect(result).toEqual([{ hostname: 'example.com', prefix: '', directory: resolve('data/site') }]);
+  });
+
+  it('skips entries missing hostname', () => {
+    expect(parseJsonMountPoints([{ directory: '/var/www/html' }])).toEqual([]);
+  });
+
+  it('skips entries missing directory', () => {
+    expect(parseJsonMountPoints([{ hostname: 'example.com' }])).toEqual([]);
+  });
+
+  it('skips non-object entries', () => {
+    expect(parseJsonMountPoints(['example.com:/var/www/html', null, 42])).toEqual([]);
   });
 });

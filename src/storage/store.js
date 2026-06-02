@@ -32,7 +32,8 @@ export class Store {
     this._findEvictionCandidate = findEvictionCandidate ?? defaultFindEvictionCandidate;
     // Pre-resolve static roots once so symlink checks at serve time are fast.
     this._realStaticRoots = staticRoots.map(r => {
-      try { return realpathSync(r); } catch { return r; }
+      const dir = typeof r === 'string' ? r : r.directory;
+      try { return realpathSync(dir); } catch { return dir; }
     });
     // Populated by indexStaticRoot after each root is indexed. Maps realpath → maslCid.
     this.staticRootMasls = new Map();

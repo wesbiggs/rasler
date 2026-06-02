@@ -559,11 +559,12 @@ export function makeOperatorRouter({ store, selfOrigin, apiSecret, corsOrigins =
    */
   router.get('/static-roots', (req, res) => {
     const result = staticRoots.map(root => {
+      const directory = typeof root === 'string' ? root : root.directory;
       let maslCid = null;
       try {
-        maslCid = store.staticRootMasls.get(realpathSync(root)) ?? null;
+        maslCid = store.staticRootMasls.get(realpathSync(directory)) ?? null;
       } catch { /* root path does not exist */ }
-      return { path: root, maslCid };
+      return { path: directory, maslCid };
     });
     return res.status(200).json(result);
   });

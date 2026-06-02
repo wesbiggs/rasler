@@ -12,9 +12,10 @@ RASLer is an Express 5 HTTP server that implements the [RASL](https://dasl.ing/r
 ```
 src/
   index.js              Entry point: reads config, wires components, starts listening
-  config.js             Parses and validates environment variables; exports frozen config object
+  config.js             Loads .env and rasler.config.json; exports frozen config object
   server.js             Express app factory (createApp / addRaslerMiddleware / finalizeApp)
   static.js             Static-root indexing: walks directories, computes CIDs, builds bundle MASLs
+  watcher.js            Filesystem watchers for static roots with watch: true
 
   routes/
     rasl.js             RASL retrieval router (GET/HEAD /.well-known/rasl/:cid[/*path])
@@ -38,7 +39,8 @@ src/
 
   util/
     env.js              required() / optional() env var helpers; loads .env file
-    parseEnvConfig.js   Pure functions: parseMountPoints(), parseStaticRoots()
+    loadRaslerConfig.js Reads rasler.config.json from CWD; returns parsed object or null
+    parseJsonConfig.js  Pure functions: parseJsonStaticRoots(), parseJsonMountPoints()
     normalizeMountPath.js  Normalises URL path prefixes (strips trailing slash, adds leading /)
     parseSize.js        Human-readable byte sizes (1G, 200M, …) → integer
     mime.js             Extension → MIME type lookup
@@ -158,16 +160,17 @@ Entries are sorted longest-prefix-first so more specific mounts win. The mount-p
 
 ## Configuration
 
-`config.js` reads environment variables through `util/env.js` (which also loads `.env`). Complex fields (`MOUNT_POINTS`, `STATIC_ROOTS`) are parsed by pure functions in `util/parseEnvConfig.js` so they can be unit-tested independently of the module-load-time side effects in `config.js`.
+`config.js` reads environment variables through `util/env.js` (which also loads `.env`) and reads `rasler.config.json` from CWD via `util/loadRaslerConfig.js`. Complex JSON fields are parsed by pure functions in `util/parseJsonConfig.js` so they can be unit-tested independently of the module-load-time side effects in `config.js`.
 
 Key config fields:
 
-| Field | Env var | Notes |
+| Field | Source | Notes |
 |---|---|---|
-| `origin` | `ORIGIN` | Full origin URL (protocol + host); used in `Link:` headers |
-| `domain` | — | Derived from `origin` (host portion only); used in startup log |
-| `mountPoints` | `MOUNT_POINTS` | Parsed array of `{hostname, prefix, directory}` |
-| `staticRoots` | `STATIC_ROOTS` + `MOUNT_POINTS` | Deduplicated union |
+| `origin` | `ORIGIN` env var | Full origin URL (protocol + host); used in `Link:` headers |
+| `domain` | — | Derived from `origin` (host portion only) |
+| `mountPoints` | `rasler.config.json` | Parsed array of `{hostname, prefix, directory}` |
+| `staticRoots` | `rasler.config.json` | Deduplicated union of explicit roots, mount point dirs, and implicit `./public`. Each entry is `{directory, watch, ignore}`. |
+| `staticMaxHistory` | `rasler.config.json` | Max pinned MASL versions per root; `null` means unlimited |
 
 ## Library usage
 
@@ -190,10 +193,10 @@ import { makeRaslNotFoundHandler } from 'rasler/src/routes/rasl.js';
 import { makeOperatorRouter } from 'rasler/src/routes/operator.js';
 import { indexStaticRoots } from 'rasler/src/static.js';
 
+const staticRoots = [{ directory: '/var/www/html', watch: false, ignore: [] }];
+
 const db = openDb('./data');
-const store = new Store(db, './data', 1024 * 1024 * 1024, {
-  staticRoots: ['/var/www/html'],
-});
+const store = new Store(db, './data', 1024 * 1024 * 1024, { staticRoots });
 
 const config = {
   origin: 'https://mynode.example.com',
@@ -204,7 +207,7 @@ const config = {
   operatorCorsOrigins: [],
   operatorApiPathPrefix: '',
   swaggerUi: false,
-  staticRoots: ['/var/www/html'],
+  staticRoots,
   staticMaxHistory: 3,
 };
 

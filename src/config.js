@@ -1,8 +1,10 @@
-import { resolve } from 'path';
+import { resolve } from 'node:path';
+import { existsSync } from 'node:fs';
 import { parseSize } from './util/parseSize.js';
 import { required, optional } from './util/env.js';
 import { normalizeMountPath } from './util/normalizeMountPath.js';
-import { parseMountPoints, parseStaticRoots } from './util/parseEnvConfig.js';
+import { loadRaslerConfig } from './util/loadRaslerConfig.js';
+import { parseJsonStaticRoots, parseJsonMountPoints } from './util/parseJsonConfig.js';
 
 export { parseSize, normalizeMountPath };
 
@@ -13,6 +15,32 @@ const port = parseInt(optional('PORT', '3000'), 10);
 // as-is so the correct protocol appears in Link: rel="duplicate" headers.
 const originRaw = optional('ORIGIN', `http://localhost:${port}`);
 const originUrl = new URL(/^https?:\/\//.test(originRaw) ? originRaw : `https://${originRaw}`);
+
+const raslerConfig = loadRaslerConfig();
+
+const mountPoints = parseJsonMountPoints(raslerConfig?.mountPoints ?? []);
+
+// Static roots from JSON config, plus any directories referenced by mountPoints.
+const staticRoots = parseJsonStaticRoots(raslerConfig?.staticRoots ?? []);
+const mountPointDirs = new Set(mountPoints.map(mp => mp.directory));
+for (const dir of mountPointDirs) {
+  if (!staticRoots.some(r => r.directory === dir)) {
+    staticRoots.push({ directory: dir, watch: false, ignore: [] });
+  }
+}
+
+// Implicit ./public mount: if the directory exists and no root-level mount is
+// already configured for the origin domain, serve it at the document root.
+const publicDir = resolve(process.cwd(), 'public');
+if (existsSync(publicDir)) {
+  if (!staticRoots.some(r => r.directory === publicDir)) {
+    staticRoots.push({ directory: publicDir, watch: false, ignore: [] });
+  }
+  if (!mountPoints.some(mp => mp.hostname === originUrl.hostname && mp.prefix === '')) {
+    mountPoints.push({ hostname: originUrl.hostname, prefix: '', directory: publicDir });
+    mountPoints.sort((a, b) => b.prefix.length - a.prefix.length);
+  }
+}
 
 const config = Object.freeze({
   origin: originUrl.origin,
@@ -29,26 +57,19 @@ const config = Object.freeze({
   })(),
   swaggerUi: optional('SWAGGER_UI', 'true') === 'true',
   operatorApiPathPrefix: normalizeMountPath(optional('OPERATOR_API_PATH_PREFIX', '')),
-  operatorCorsOrigins: optional('OPERATOR_CORS_ORIGINS', '')
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean),
-  // Array of mount point configs for virtual host serving. Each entry maps a
-  // hostname (with optional URL path prefix) to a local directory.
-  // Format: "hostname[/prefix]:directory" — e.g.:
-  //   "example.com:/var/www/html,example.com/docs:/var/www/docs"
-  // Entries are sorted longest-prefix-first so more specific mounts win.
-  mountPoints: parseMountPoints(optional('MOUNT_POINTS', '')),
-  // Comma-separated list of absolute directory paths to index as static RASL
-  // roots at startup. Files are served by CID without being copied to the blob
-  // store. Paths must be pre-approved here; no runtime API can add new roots.
-  // Paths listed in MOUNT_POINTS are automatically included.
-  staticRoots: parseStaticRoots(optional('STATIC_ROOTS', ''), optional('MOUNT_POINTS', '')),
+  operatorCorsOrigins: Array.isArray(raslerConfig?.operatorCorsOrigins)
+    ? raslerConfig.operatorCorsOrigins.filter(s => typeof s === 'string' && s.trim()).map(s => s.trim())
+    : [],
+  // Array of { hostname, prefix, directory } sorted longest-prefix-first.
+  mountPoints,
+  // Array of { directory, watch, ignore } for all static roots (includes mount
+  // point directories and the implicit ./public if it exists).
+  staticRoots,
   // Maximum number of MASL versions to keep pinned per static root (including
   // the current one). Older entries are unpinned and become eligible for LRU
   // eviction. Unset or 0 means no limit.
   staticMaxHistory: (() => {
-    const n = parseInt(optional('STATIC_MAX_HISTORY', '0'), 10);
+    const n = parseInt(raslerConfig?.staticMaxHistory ?? 0, 10);
     return Number.isFinite(n) && n >= 1 ? n : null;
   })(),
 });

@@ -1,6 +1,7 @@
 node_modules/
 data/
 .env
+rasler.config.json
 *.log
 npm-debug.log*
 .DS_Store

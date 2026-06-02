@@ -1,0 +1,15 @@
+{
+  "staticRoots": [
+    { "path": "/var/www/assets", "watch": true, "ignore": ["**/*.log", ".DS_Store"] }
+  ],
+  "staticMaxHistory": 5,
+  "mountPoints": [
+    { "hostname": "example.com", "directory": "/var/www/html" },
+    { "hostname": "example.com", "prefix": "/docs", "directory": "/var/www/docs" },
+    { "hostname": "docs.example.com", "directory": "/var/www/docs" }
+  ],
+  "operatorCorsOrigins": [
+    "http://localhost:5173",
+    "https://admin.example.com"
+  ]
+}

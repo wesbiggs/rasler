@@ -17,6 +17,7 @@ RASLer is a HTTP server that implements [RASL](https://dasl.ing/rasl.html)'s `/.
 npm install
 cp .env.example .env
 # edit .env and set API_SECRET
+cp rasler.config.example.json rasler.config.json  # optional — configure static roots, mount points, CORS
 npm start
 # open http://localhost:3000/api-docs in a browser
 ```
@@ -33,6 +34,8 @@ See [USE_CASES](USE_CASES.md) for an overview of common deployment patterns incl
 
 ## Configuration
 
+### Environment variables (`.env`)
+
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `ORIGIN` | No | `http://localhost:<PORT>` | This node's public origin, protocol included (e.g. `https://node1.example.com`). Used in `Link: rel="duplicate"` headers. A bare hostname without protocol is accepted and defaults to `https://`. |
@@ -41,11 +44,33 @@ See [USE_CASES](USE_CASES.md) for an overview of common deployment patterns incl
 | `DATA_DIR` | No | `./data` | Directory for the SQLite database and content blobs |
 | `TOTAL_CAPACITY` | No | `1G` | Storage budget (`200M`, `1G`, `2GB`, plain bytes) |
 | `OPERATOR_API_PATH_PREFIX` | No | — | Mount operator API under a path prefix (e.g. `/admin`) |
-| `OPERATOR_CORS_ORIGINS` | No | — | Comma-separated origins allowed cross-origin |
 | `SWAGGER_UI` | No | `true` | Set `false` to disable the interactive API docs at `<operator-api-path-prefix>/api-docs` |
-| `STATIC_ROOTS` | No | — | Comma-separated directory paths to serve as static RASL roots (see [STATIC_ROOTS](STATIC_ROOTS.md)) |
-| `STATIC_MAX_HISTORY` | No | — | Maximum pinned MASL versions per static root; older versions are unpinned for LRU eviction |
-| `MOUNT_POINTS` | No | — | Comma-separated mount point definitions mapping `hostname[/prefix]:directory` (see [MOUNT_POINTS](MOUNT_POINTS.md)) |
+
+### `rasler.config.json`
+
+Static roots, mount points, and CORS origins are configured in an optional `rasler.config.json` file in the working directory. Copy `rasler.config.example.json` to get started.
+
+```json
+{
+  "staticRoots": [
+    { "path": "/var/www/assets", "watch": true, "ignore": ["**/*.log", ".DS_Store"] }
+  ],
+  "mountPoints": [
+    { "hostname": "example.com", "directory": "/var/www/html" },
+    { "hostname": "example.com", "prefix": "/docs", "directory": "/var/www/docs" }
+  ],
+  "operatorCorsOrigins": ["http://localhost:5173", "https://admin.example.com"]
+}
+```
+
+| Key | Description |
+|---|---|
+| `staticRoots` | Directories to serve as static RASL roots. String entries use defaults; object entries add `watch` (re-index on change) and `ignore` (glob patterns to skip). See [STATIC_ROOTS](STATIC_ROOTS.md). |
+| `staticMaxHistory` | Maximum pinned MASL versions per static root; older versions are unpinned for LRU eviction. Omit for unlimited. |
+| `mountPoints` | Virtual host mappings: `{ hostname, prefix?, directory }`. See [MOUNT_POINTS](MOUNT_POINTS.md). |
+| `operatorCorsOrigins` | Origins allowed to call the Operator API cross-origin. |
+
+**Implicit `./public` mount** — if a `./public` directory exists and no root-level mount point is configured for the origin domain, RASLer automatically serves it at the document root with `Link: rel="duplicate"` headers.
 
 ## API
 

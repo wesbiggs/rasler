@@ -5,6 +5,7 @@ import { createApp, finalizeApp } from './server.js';
 import { makeRaslNotFoundHandler } from './routes/rasl.js';
 import { makeOperatorRouter } from './routes/operator.js';
 import { indexStaticRoots } from './static.js';
+import { startStaticRootWatchers } from './watcher.js';
 
 function main() {
   const db = openDb(config.dataDir);
@@ -13,11 +14,12 @@ function main() {
   });
 
   // Index static roots in the background so the server starts immediately.
-  // On first startup, static CIDs won't be available until indexing finishes.
-  // On subsequent startups the mtime cache makes indexing fast enough that
-  // the window is negligible.
+  // Watchers start after the initial index so startup writes don't trigger
+  // spurious re-indexes. On a warm restart (no file changes) the mtime cache
+  // makes the window negligible.
   if (config.staticRoots.length > 0) {
-    indexStaticRoots(config.staticRoots, store, { maxHistory: config.staticMaxHistory });
+    indexStaticRoots(config.staticRoots, store, { maxHistory: config.staticMaxHistory })
+      .then(() => startStaticRootWatchers(config.staticRoots, store, { maxHistory: config.staticMaxHistory }));
   }
 
   const app = createApp({ store, config });

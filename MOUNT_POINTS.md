@@ -4,20 +4,38 @@ Mount points map the HTTP `Host:` header (and an optional URL path prefix) to a 
 
 There are two kinds of mount point, which can be used together:
 
-- **Static** — configured via the `MOUNT_POINTS` environment variable; the directory is automatically indexed as a static root at startup.
+- **Static** — configured via `rasler.config.json`; the directory is automatically indexed as a static root at startup.
 - **Runtime** — set via the operator API (`PUT /mount-points/:hostname[/:prefix]`); can point to any bundle MASL already held by the node, with no directory required.
 
 Runtime entries take priority over static entries when both match the same hostname and prefix.
 
 ## Static mount points
 
-Configure via `MOUNT_POINTS`:
+Configure via `rasler.config.json`:
 
-```
-MOUNT_POINTS=example.com:/var/www/html,example.com/docs:/var/www/docs,docs.example.com:/var/www/docs
+```json
+{
+  "mountPoints": [
+    { "hostname": "example.com", "directory": "/var/www/html" },
+    { "hostname": "example.com", "prefix": "/docs", "directory": "/var/www/docs" },
+    { "hostname": "docs.example.com", "directory": "/var/www/docs" }
+  ]
+}
 ```
 
-Each entry maps a hostname with an optional URL path prefix to a local directory. The directory is automatically added to `STATIC_ROOTS` and indexed at startup (see [STATIC_ROOTS.md](STATIC_ROOTS.md) for how indexing works). On every request the current bundle MASL for that root is read from memory, so served content updates automatically after a re-index without a server restart.
+Each entry maps a hostname (with an optional URL path prefix) to a local directory. The directory is automatically added to static roots and indexed at startup (see [STATIC_ROOTS.md](STATIC_ROOTS.md) for how indexing works). On every request the current bundle MASL for that root is read from memory, so served content updates automatically after a re-index without a server restart.
+
+| Field | Required | Description |
+|---|---|---|
+| `hostname` | Yes | `Host:` header value to match (no port) |
+| `prefix` | No | URL path prefix; omit or `""` to match the root |
+| `directory` | Yes | Local directory path (resolved relative to CWD) |
+
+More specific (longer) prefixes take priority when multiple mount points share the same hostname.
+
+## Implicit `./public` mount
+
+If a `./public` directory exists in the working directory and no root-level mount point is configured for the origin domain, RASLer automatically serves it at the document root with `Link: rel="duplicate"` headers. See [STATIC_ROOTS.md](STATIC_ROOTS.md) for details.
 
 ## Runtime mount points
 
