@@ -134,4 +134,7 @@ npm run lint
 
 # Regenerate openapi.json from JSDoc in src/routes/operator.js
 npm run generate:openapi
+
+# Generate HTML docs from *.md files into ./public
+npm run generate:docs
 ```

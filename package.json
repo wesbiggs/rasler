@@ -32,6 +32,7 @@
     "test:unit": "NODE_OPTIONS=--experimental-vm-modules jest test/unit --runInBand",
     "test:integration": "NODE_OPTIONS=--experimental-vm-modules jest test/integration --runInBand",
     "generate:openapi": "node scripts/generate-openapi.js",
+    "generate:docs": "node scripts/generate-docs.js",
     "get-in-the-car": "node scripts/get-in-the-car.js"
   },
   "dependencies": {
@@ -49,6 +50,7 @@
     "eslint": "10.4.1",
     "globals": "17.6.0",
     "jest": "30.4.2",
+    "marked": "18.0.4",
     "supertest": "7.2.2",
     "swagger-jsdoc": "6.3.0"
   },

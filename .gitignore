@@ -1,5 +1,7 @@
 node_modules/
 data/
+public/*
+!public/favicon.ico
 .env
 rasler.config.json
 *.log
