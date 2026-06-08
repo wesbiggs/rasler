@@ -3,7 +3,7 @@ import { indexStaticRoot } from './static.js';
 
 // Starts a recursive fs watcher for a single static root. Re-indexes the root
 // after a 300 ms debounce whenever any file inside it changes.
-function watchStaticRoot({ directory, ignore }, store, { maxHistory }) {
+function watchStaticRoot({ directory, ignore, generateMasl = true }, store, { maxHistory }) {
   let debounceTimer = null;
 
   (async () => {
@@ -13,9 +13,14 @@ function watchStaticRoot({ directory, ignore }, store, { maxHistory }) {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(async () => {
           try {
-            const maslCid = await indexStaticRoot(directory, store, { maxHistory, ignore });
-            if (maslCid) console.log(`Static root re-indexed: ${directory} → MASL ${maslCid}`);
-            else console.warn(`Static root re-indexed but empty: ${directory}`);
+            const maslCid = await indexStaticRoot(directory, store, { maxHistory, ignore, generateMasl });
+            if (maslCid) {
+              console.log(`Static root re-indexed: ${directory} → MASL ${maslCid}`);
+            } else if (!generateMasl) {
+              console.log(`Static root re-indexed: ${directory} (blobs only, no MASL)`);
+            } else {
+              console.warn(`Static root re-indexed but empty: ${directory}`);
+            }
           } catch (err) {
             console.error(`Failed to re-index static root ${directory}: ${err.message}`);
           }

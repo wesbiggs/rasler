@@ -40,13 +40,19 @@ async function* walkDir(dir, rootDir, ignore) {
 }
 
 // Scans rootPath, registers each file's CID in the store's DB (with
-// source_path set), generates a bundle MASL for the root, and returns the
-// MASL CID. Files are never copied to the blob store. Symlinks that resolve
-// outside the root are silently skipped.
+// source_path set), and — when generateMasl is true (the default) —
+// generates a bundle MASL for the root and returns its CID. Files are never
+// copied to the blob store. Symlinks that resolve outside the root are
+// silently skipped.
+//
+// When generateMasl is false, files are stored as plain blobs only (no MASL
+// document is created and null is returned). This is useful for roots that
+// exist purely to make a set of named blobs available by CID.
 //
 // On repeated calls, files whose size and mtime match the stored values are
-// not re-read or re-hashed. DB entries for files that no longer exist are removed.
-export async function indexStaticRoot(rootPath, store, { maxHistory = null, ignore = [] } = {}) {
+// not re-read or re-hashed. DB entries for files that no longer exist are
+// removed.
+export async function indexStaticRoot(rootPath, store, { maxHistory = null, ignore = [], generateMasl = true } = {}) {
   const realRoot = await realpath(rootPath);
   const fileInfos = [];
   const visitedPaths = new Set();
@@ -87,6 +93,19 @@ export async function indexStaticRoot(rootPath, store, { maxHistory = null, igno
   }
 
   if (fileInfos.length === 0) return null;
+
+  if (!generateMasl) {
+    // Nothing changed: files are already registered in the DB — no work needed.
+    if (!changed) return null;
+    const seen = new Set();
+    for (const { cid, size, mtime, realPath } of fileInfos) {
+      if (!seen.has(cid)) {
+        seen.add(cid);
+        dbPutStaticContent(store.db, cid, { maslCid: null, size, sourcePath: realPath, sourceMtime: mtime });
+      }
+    }
+    return null;
+  }
 
   // Find the existing MASL CID for this root (if any) to link as prev.
   const prevEntry = dbListStaticContent(store.db)
@@ -132,11 +151,16 @@ export async function indexStaticRoot(rootPath, store, { maxHistory = null, igno
 
 export async function indexStaticRoots(staticRoots, store, { maxHistory = null } = {}) {
   for (const root of staticRoots) {
-    const { directory, ignore = [] } = root;
+    const { directory, ignore = [], generateMasl = true } = root;
     try {
-      const maslCid = await indexStaticRoot(directory, store, { maxHistory, ignore });
-      if (maslCid) console.log(`Static root indexed: ${directory} → MASL ${maslCid}`);
-      else console.warn(`Static root empty, skipped: ${directory}`);
+      const maslCid = await indexStaticRoot(directory, store, { maxHistory, ignore, generateMasl });
+      if (maslCid) {
+        console.log(`Static root indexed: ${directory} → MASL ${maslCid}`);
+      } else if (!generateMasl) {
+        console.log(`Static root indexed: ${directory} (blobs only, no MASL)`);
+      } else {
+        console.warn(`Static root empty, skipped: ${directory}`);
+      }
     } catch (err) {
       console.error(`Failed to index static root ${directory}: ${err.message}`);
     }

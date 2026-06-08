@@ -421,6 +421,69 @@ describe('RASL routes', () => {
     });
   });
 
+  // ── Static root with generateMasl: false ──────────────────────────────────
+  // Files are indexed as plain blobs (accessible by CID) but no MASL is built.
+
+  describe('static root with generateMasl: false', () => {
+    let blobDir, blobApp, blobStore, blobCleanup;
+
+    beforeEach(async () => {
+      blobDir = mkdtempSync(join(tmpdir(), 'rasl-blob-'));
+      writeFileSync(join(blobDir, 'data.txt'), 'hello blob');
+      writeFileSync(join(blobDir, 'image.png'), 'fake-png-bytes');
+
+      ({ app: blobApp, store: blobStore, cleanup: blobCleanup } =
+        makeBaseTestApp({ staticRoots: [{ directory: blobDir, watch: false, ignore: [], generateMasl: false }] }));
+      await indexStaticRoot(blobDir, blobStore, { generateMasl: false });
+    });
+
+    afterEach(() => {
+      blobCleanup();
+      rmSync(blobDir, { recursive: true, force: true });
+    });
+
+    it('files are accessible by CID after indexing', async () => {
+      const bytes = Buffer.from('hello blob');
+      const cid = await computeDataCid(bytes);
+      const res = await request(blobApp).get(`/.well-known/rasl/${cid}`);
+      expect(res.status).toBe(200);
+      expect(res.body.toString()).toBe('hello blob');
+    });
+
+    it('no bundle MASL is stored in the store', async () => {
+      const bytes = Buffer.from('hello blob');
+      const cid = await computeDataCid(bytes);
+      const meta = blobStore.getContentMeta(cid);
+      expect(meta).toBeDefined();
+      expect(meta.masl_cid).toBeNull();
+      expect(meta.source_path).toContain('data.txt');
+    });
+
+    it('staticRootMasls is not populated for a no-MASL root', async () => {
+      const { realpathSync } = await import('fs');
+      const realDir = realpathSync(blobDir);
+      expect(blobStore.staticRootMasls.has(realDir)).toBe(false);
+    });
+
+    it('GET /static-roots returns null maslCid for no-MASL root', async () => {
+      const res = await request(blobApp)
+        .get('/static-roots')
+        .set('x-rasl-operator-secret', 'test-secret');
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].maslCid).toBeNull();
+    });
+
+    it('re-index with no changes does not rehash files', async () => {
+      const bytes = Buffer.from('hello blob');
+      const cid = await computeDataCid(bytes);
+      const metaBefore = blobStore.getContentMeta(cid);
+      await indexStaticRoot(blobDir, blobStore, { generateMasl: false });
+      const metaAfter = blobStore.getContentMeta(cid);
+      expect(metaAfter.source_mtime).toBe(metaBefore.source_mtime);
+    });
+  });
+
   // ── Virtual host routing ───────────────────────────────────────────────────
   // Host: header mapped to a static root's MASL bundle.
 
@@ -841,6 +904,162 @@ describe('RASL routes', () => {
       } finally {
         rmSync(rootDir, { recursive: true, force: true });
       }
+    });
+  });
+
+  // ── Wildcard (any-host) mount points ──────────────────────────────────────
+  // hostname='' (config) or '-' (API) matches any Host: header value.
+
+  describe('wildcard host routing', () => {
+    let wildcardApp, wildcardStore, wildcardCleanup;
+
+    beforeEach(() => {
+      ({ app: wildcardApp, store: wildcardStore, cleanup: wildcardCleanup } = makeBaseTestApp());
+    });
+
+    afterEach(() => wildcardCleanup());
+
+    async function uploadBundle(store, html = '<html>wildcard</html>') {
+      const indexBytes = Buffer.from(html);
+      const indexCid = await computeDataCid(indexBytes);
+      const { cborBytes, maslCid } = await createBundleMasl({
+        name: 'Wildcard Site',
+        resources: [{ path: '/', cid: indexCid, size: indexBytes.length, contentType: 'text/html' }],
+      });
+      store.putContent(indexCid, indexBytes, { maslCid });
+      store.putContent(maslCid, cborBytes);
+      return { maslCid, indexBytes, indexCid };
+    }
+
+    it('PUT /mount-points/- registers a wildcard mount and responds with hostname: null', async () => {
+      const { maslCid } = await uploadBundle(wildcardStore);
+      const res = await request(wildcardApp)
+        .put('/mount-points/-')
+        .set('x-rasl-operator-secret', 'test-secret')
+        .send({ maslCid });
+      expect(res.status).toBe(200);
+      expect(res.body.hostname).toBeNull();
+      expect(res.body.maslCid).toBe(maslCid);
+    });
+
+    it('wildcard mount serves any Host: header value', async () => {
+      const { maslCid } = await uploadBundle(wildcardStore);
+      await request(wildcardApp)
+        .put('/mount-points/-')
+        .set('x-rasl-operator-secret', 'test-secret')
+        .send({ maslCid });
+
+      for (const host of ['alpha.example.com', 'beta.example.com', 'anything']) {
+        const res = await request(wildcardApp).get('/').set('Host', host);
+        expect(res.status).toBe(200);
+        expect(res.text).toBe('<html>wildcard</html>');
+      }
+    });
+
+    it('wildcard mount with path prefix serves matching paths on any host', async () => {
+      const { maslCid } = await uploadBundle(wildcardStore);
+      await request(wildcardApp)
+        .put('/mount-points/-/docs')
+        .set('x-rasl-operator-secret', 'test-secret')
+        .send({ maslCid });
+
+      const res = await request(wildcardApp).get('/docs/').set('Host', 'any.example.com');
+      expect(res.status).toBe(200);
+      expect(res.text).toBe('<html>wildcard</html>');
+    });
+
+    it('specific-host mount wins over wildcard at same prefix', async () => {
+      const { maslCid: specificMasl } = await uploadBundle(wildcardStore, '<html>specific</html>');
+      const { maslCid: wildcardMasl } = await uploadBundle(wildcardStore, '<html>wildcard</html>');
+
+      await request(wildcardApp)
+        .put('/mount-points/exact.example.com')
+        .set('x-rasl-operator-secret', 'test-secret')
+        .send({ maslCid: specificMasl });
+      await request(wildcardApp)
+        .put('/mount-points/-')
+        .set('x-rasl-operator-secret', 'test-secret')
+        .send({ maslCid: wildcardMasl });
+
+      const specificRes = await request(wildcardApp).get('/').set('Host', 'exact.example.com');
+      expect(specificRes.status).toBe(200);
+      expect(specificRes.text).toBe('<html>specific</html>');
+
+      const wildcardRes = await request(wildcardApp).get('/').set('Host', 'other.example.com');
+      expect(wildcardRes.status).toBe(200);
+      expect(wildcardRes.text).toBe('<html>wildcard</html>');
+    });
+
+    it('GET /mount-points shows hostname: null for wildcard runtime entry', async () => {
+      const { maslCid } = await uploadBundle(wildcardStore);
+      await request(wildcardApp)
+        .put('/mount-points/-')
+        .set('x-rasl-operator-secret', 'test-secret')
+        .send({ maslCid });
+
+      const res = await request(wildcardApp)
+        .get('/mount-points')
+        .set('x-rasl-operator-secret', 'test-secret');
+      expect(res.status).toBe(200);
+      const entry = res.body.find(e => e.maslCid === maslCid);
+      expect(entry).toBeDefined();
+      expect(entry.hostname).toBeNull();
+      expect(entry.source).toBe('runtime');
+    });
+
+    it('DELETE /mount-points/- removes the wildcard mapping', async () => {
+      const { maslCid } = await uploadBundle(wildcardStore);
+      await request(wildcardApp)
+        .put('/mount-points/-')
+        .set('x-rasl-operator-secret', 'test-secret')
+        .send({ maslCid });
+
+      const del = await request(wildcardApp)
+        .delete('/mount-points/-')
+        .set('x-rasl-operator-secret', 'test-secret');
+      expect(del.status).toBe(200);
+
+      const fakeCid = await computeDataCid(Buffer.from('gone'));
+      const res = await request(wildcardApp)
+        .get(`/.well-known/rasl/${fakeCid}`)
+        .set('Host', 'any.example.com');
+      expect(res.status).toBe(404);
+    });
+  });
+
+  // ── Wildcard static mount point (config) ──────────────────────────────────
+
+  describe('wildcard static mount point (config)', () => {
+    let wildcardDir, wildcardApp, wildcardStore, wildcardCleanup;
+
+    beforeEach(async () => {
+      wildcardDir = mkdtempSync(join(tmpdir(), 'rasl-wc-'));
+      writeFileSync(join(wildcardDir, 'index.html'), '<html>wildcard-static</html>');
+      const mountPoints = [{ hostname: '', prefix: '', directory: wildcardDir }];
+      ({ app: wildcardApp, store: wildcardStore, cleanup: wildcardCleanup } =
+        makeBaseTestApp({ staticRoots: [wildcardDir], mountPoints }));
+      await indexStaticRoot(wildcardDir, wildcardStore);
+    });
+
+    afterEach(() => {
+      wildcardCleanup();
+      rmSync(wildcardDir, { recursive: true, force: true });
+    });
+
+    it('static wildcard mount serves any hostname', async () => {
+      const res = await request(wildcardApp).get('/').set('Host', 'anything.example.com');
+      expect(res.status).toBe(200);
+      expect(res.text).toBe('<html>wildcard-static</html>');
+    });
+
+    it('GET /mount-points shows hostname: null for wildcard static entry', async () => {
+      const res = await request(wildcardApp)
+        .get('/mount-points')
+        .set('x-rasl-operator-secret', 'test-secret');
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].hostname).toBeNull();
+      expect(res.body[0].source).toBe('static');
     });
   });
 

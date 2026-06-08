@@ -2,7 +2,7 @@ import { describe, it, expect } from '@jest/globals';
 import { resolve } from 'path';
 import { parseSize } from '../../src/util/parseSize.js';
 import { normalizeMountPath } from '../../src/util/normalizeMountPath.js';
-import { parseJsonStaticRoots, parseJsonMountPoints } from '../../src/util/parseJsonConfig.js';
+import { parseJsonStaticRoots, parseJsonMountPoints, sortMountPoints } from '../../src/util/parseJsonConfig.js';
 
 describe('parseSize', () => {
   it('parses plain byte counts', () => {
@@ -108,34 +108,46 @@ describe('parseJsonStaticRoots', () => {
 
   it('parses a string entry', () => {
     expect(parseJsonStaticRoots(['/var/www/html'])).toEqual([
-      { directory: '/var/www/html', watch: false, ignore: [] },
+      { directory: '/var/www/html', watch: false, ignore: [], generateMasl: true },
     ]);
   });
 
   it('resolves relative paths against CWD', () => {
     expect(parseJsonStaticRoots(['data/site'])).toEqual([
-      { directory: resolve('data/site'), watch: false, ignore: [] },
+      { directory: resolve('data/site'), watch: false, ignore: [], generateMasl: true },
     ]);
   });
 
   it('parses an object entry with defaults', () => {
     expect(parseJsonStaticRoots([{ path: '/var/www/html' }])).toEqual([
-      { directory: '/var/www/html', watch: false, ignore: [] },
+      { directory: '/var/www/html', watch: false, ignore: [], generateMasl: true },
     ]);
   });
 
   it('parses an object entry with watch and ignore', () => {
     const result = parseJsonStaticRoots([{ path: '/var/www/html', watch: true, ignore: ['**/*.log', '.DS_Store'] }]);
     expect(result).toEqual([
-      { directory: '/var/www/html', watch: true, ignore: ['**/*.log', '.DS_Store'] },
+      { directory: '/var/www/html', watch: true, ignore: ['**/*.log', '.DS_Store'], generateMasl: true },
     ]);
+  });
+
+  it('parses generateMasl: false', () => {
+    const result = parseJsonStaticRoots([{ path: '/var/www/blobs', generateMasl: false }]);
+    expect(result).toEqual([
+      { directory: '/var/www/blobs', watch: false, ignore: [], generateMasl: false },
+    ]);
+  });
+
+  it('defaults generateMasl to true when not specified', () => {
+    const result = parseJsonStaticRoots([{ path: '/var/www/html', watch: true }]);
+    expect(result[0].generateMasl).toBe(true);
   });
 
   it('parses a mix of string and object entries', () => {
     const result = parseJsonStaticRoots(['/var/www/a', { path: '/var/www/b', watch: true }]);
     expect(result).toEqual([
-      { directory: '/var/www/a', watch: false, ignore: [] },
-      { directory: '/var/www/b', watch: true, ignore: [] },
+      { directory: '/var/www/a', watch: false, ignore: [], generateMasl: true },
+      { directory: '/var/www/b', watch: true, ignore: [], generateMasl: true },
     ]);
   });
 
@@ -191,8 +203,14 @@ describe('parseJsonMountPoints', () => {
     expect(result).toEqual([{ hostname: 'example.com', prefix: '', directory: resolve('data/site') }]);
   });
 
-  it('skips entries missing hostname', () => {
-    expect(parseJsonMountPoints([{ directory: '/var/www/html' }])).toEqual([]);
+  it('treats missing hostname as wildcard (any host)', () => {
+    const result = parseJsonMountPoints([{ directory: '/var/www/html' }]);
+    expect(result).toEqual([{ hostname: '', prefix: '', directory: '/var/www/html' }]);
+  });
+
+  it('treats empty-string hostname as wildcard', () => {
+    const result = parseJsonMountPoints([{ hostname: '', directory: '/var/www/html' }]);
+    expect(result).toEqual([{ hostname: '', prefix: '', directory: '/var/www/html' }]);
   });
 
   it('skips entries missing directory', () => {
@@ -201,5 +219,37 @@ describe('parseJsonMountPoints', () => {
 
   it('skips non-object entries', () => {
     expect(parseJsonMountPoints(['example.com:/var/www/html', null, 42])).toEqual([]);
+  });
+});
+
+describe('sortMountPoints', () => {
+  it('places longer prefix before shorter prefix regardless of hostname', () => {
+    const points = [
+      { hostname: '', prefix: '', directory: '/a' },
+      { hostname: 'example.com', prefix: '/docs', directory: '/b' },
+    ];
+    sortMountPoints(points);
+    expect(points[0].prefix).toBe('/docs');
+    expect(points[1].prefix).toBe('');
+  });
+
+  it('places specific hostname before wildcard at equal prefix length', () => {
+    const points = [
+      { hostname: '', prefix: '/docs', directory: '/a' },
+      { hostname: 'example.com', prefix: '/docs', directory: '/b' },
+    ];
+    sortMountPoints(points);
+    expect(points[0].hostname).toBe('example.com');
+    expect(points[1].hostname).toBe('');
+  });
+
+  it('longer prefix wins over hostname specificity', () => {
+    const points = [
+      { hostname: 'example.com', prefix: '', directory: '/a' },
+      { hostname: '', prefix: '/docs', directory: '/b' },
+    ];
+    sortMountPoints(points);
+    expect(points[0].prefix).toBe('/docs');
+    expect(points[0].hostname).toBe('');
   });
 });

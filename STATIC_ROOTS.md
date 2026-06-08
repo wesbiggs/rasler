@@ -24,6 +24,7 @@ Static roots are configured in `rasler.config.json`. Each entry in `staticRoots`
 | `path` | string | — | Directory path (required for object form; resolved relative to CWD) |
 | `watch` | boolean | `false` | Re-index the root automatically when files change |
 | `ignore` | string[] | `[]` | Glob patterns for files to skip during indexing |
+| `generateMasl` | boolean | `true` | Whether to build a bundle MASL for the root. Set to `false` to index files as plain blobs (accessible by CID) without a MASL document. |
 
 Directories listed in `mountPoints` are automatically included as static roots — no need to list them twice.
 
@@ -35,9 +36,19 @@ On startup, each configured root is scanned. For each file:
 2. If the file is new or modified, it is hashed to compute its CID.
 3. Files matching any `ignore` pattern (relative to the root) are skipped entirely.
 
-A single bundle MASL is generated for each root, with all file paths preserved relative to the root directory. `index.html` files additionally register an alias for their parent directory path. Scanning runs in the background so the server is available immediately; on a warm restart (no file changes) the indexing window is negligible.
+When `generateMasl` is `true` (the default), a single bundle MASL is generated for the root, with all file paths preserved relative to the root directory. `index.html` files additionally register an alias for their parent directory path. When `generateMasl` is `false`, files are still hashed and stored as individual blobs accessible by CID, but no MASL document is created — useful when you want a set of blobs available for direct CID retrieval without path-based resolution. Directories used as mount points always generate a MASL regardless of this setting. Scanning runs in the background so the server is available immediately; on a warm restart (no file changes) the indexing window is negligible.
 
 Files are registered in SQLite with `source_path` set to their real path. They are never copied to the blob store, and they are not counted against `TOTAL_CAPACITY`. Static entries cannot be evicted by the LRU policy.
+
+## Retrieving the MASL CID
+
+Once a root has been indexed, its current bundle MASL CID is available from the operator API:
+
+```
+GET /static-roots
+```
+
+The response lists each configured root with its `maslCid`. Use that CID to build RASL paths (`/.well-known/rasl/<maslCid>/path/to/file`) or to wire a mount point via `PUT /mount-points/:hostname`.
 
 ## File watching
 

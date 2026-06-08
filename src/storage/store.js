@@ -4,6 +4,7 @@ import {
   dbCountPinned, dbCountContent, dbListContentPage,
   dbSetMountPoint, dbDeleteMountPoint, dbListMountPoints,
 } from './db.js';
+import { sortMountPoints } from '../util/parseJsonConfig.js';
 import {
   writeContent, readContent, readContentFromPath,
   readContentStream, readContentStreamFromPath, deleteContent,
@@ -38,11 +39,13 @@ export class Store {
     // Populated by indexStaticRoot after each root is indexed. Maps realpath → maslCid.
     this.staticRootMasls = new Map();
     // Runtime mount point mappings set via operator API. Persisted in SQLite.
-    // Array of {hostname, prefix, maslCid} sorted longest-prefix-first.
+    // Array of {hostname, prefix, maslCid} — hostname='' means any host.
+    // Sorted: longer prefix first; equal prefix: specific hostname before wildcard.
     // Takes priority over staticRootMasls in mount-point routing.
-    this.runtimeMountPoints = dbListMountPoints(db)
-      .map(row => ({ hostname: row.hostname, prefix: row.mount_path, maslCid: row.masl_cid }))
-      .sort((a, b) => b.prefix.length - a.prefix.length);
+    const runtimeRows = dbListMountPoints(db)
+      .map(row => ({ hostname: row.hostname, prefix: row.mount_path, maslCid: row.masl_cid }));
+    sortMountPoints(runtimeRows);
+    this.runtimeMountPoints = runtimeRows;
   }
 
   putContent(cid, bytes, { maslCid = null, pinned = false } = {}) {
@@ -148,7 +151,7 @@ export class Store {
       mp => !(mp.hostname === hostname && mp.prefix === prefix)
     );
     this.runtimeMountPoints.push({ hostname, prefix, maslCid });
-    this.runtimeMountPoints.sort((a, b) => b.prefix.length - a.prefix.length);
+    sortMountPoints(this.runtimeMountPoints);
   }
 
   deleteMountPoint(hostname, prefix) {

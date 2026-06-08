@@ -7,7 +7,7 @@ There are two kinds of mount point, which can be used together:
 - **Static** — configured via `rasler.config.json`; the directory is automatically indexed as a static root at startup.
 - **Runtime** — set via the operator API (`PUT /mount-points/:hostname[/:prefix]`); can point to any bundle MASL already held by the node, with no directory required.
 
-Runtime entries take priority over static entries when both match the same hostname and prefix.
+Runtime entries take priority over static entries when both match the same (hostname, prefix) pair.
 
 ## Static mount points
 
@@ -18,20 +18,21 @@ Configure via `rasler.config.json`:
   "mountPoints": [
     { "hostname": "example.com", "directory": "/var/www/html" },
     { "hostname": "example.com", "prefix": "/docs", "directory": "/var/www/docs" },
-    { "hostname": "docs.example.com", "directory": "/var/www/docs" }
+    { "hostname": "docs.example.com", "directory": "/var/www/docs" },
+    { "directory": "/var/www/fallback" }
   ]
 }
 ```
 
-Each entry maps a hostname (with an optional URL path prefix) to a local directory. The directory is automatically added to static roots and indexed at startup (see [STATIC_ROOTS.md](STATIC_ROOTS.md) for how indexing works). On every request the current bundle MASL for that root is read from memory, so served content updates automatically after a re-index without a server restart.
+Each entry maps an optional hostname (with an optional URL path prefix) to a local directory. The directory is automatically added to static roots and indexed at startup (see [STATIC_ROOTS.md](STATIC_ROOTS.md) for how indexing works). On every request the current bundle MASL for that root is read from memory, so served content updates automatically after a re-index without a server restart.
 
 | Field | Required | Description |
 |---|---|---|
-| `hostname` | Yes | `Host:` header value to match (no port) |
+| `hostname` | No | `Host:` header value to match (no port). Omit to match **any** `Host:` value (or no host header). |
 | `prefix` | No | URL path prefix; omit or `""` to match the root |
 | `directory` | Yes | Local directory path (resolved relative to CWD) |
 
-More specific (longer) prefixes take priority when multiple mount points share the same hostname.
+**Match priority** — longer path prefixes take priority over shorter ones. When two mount points share the same prefix length, an entry with a specific hostname is checked before a wildcard (any-host) entry.
 
 ## Implicit `./public` mount
 
@@ -46,7 +47,14 @@ PUT /mount-points/:hostname[/:prefix]
 Body: { "maslCid": "<bundle-masl-cid>" }
 ```
 
-The target MASL CID must already be held locally (e.g. uploaded via `/upload` or pinned via `/pin`) and must be a bundle MASL. The mapping is stored in SQLite and survives restarts. Use `DELETE /mount-points/:hostname[/:prefix]` to remove it.
+Use `-` as the hostname to create a **wildcard** mount that matches any `Host:` header value:
+
+```
+PUT /mount-points/-           → root wildcard mount
+PUT /mount-points/-/docs      → wildcard mount at /docs prefix
+```
+
+The target MASL CID must already be held locally (e.g. uploaded via `/upload` or pinned via `/pin`) and must be a bundle MASL. The mapping is stored in SQLite and survives restarts. Use `DELETE /mount-points/:hostname[/:prefix]` (or `DELETE /mount-points/-[/:prefix]`) to remove it.
 
 This approach works well when you want to serve content uploaded as a CAR file, or when you want to atomically switch the content served at a hostname by pointing it at a different MASL CID.
 
@@ -54,7 +62,7 @@ This approach works well when you want to serve content uploaded as a CAR file, 
 
 The same pipeline handles both kinds of mount point:
 
-1. The `Host:` header is matched against configured hostnames; the URL path prefix is matched to select the most specific (longest) mount point.
+1. The incoming request path and `Host:` header are matched against all configured mount points. Matching uses longest-prefix-first order; at equal prefix length, a specific-hostname entry is checked before a wildcard entry.
 2. Runtime entries are checked first; static entries are the fallback.
 3. The path prefix is stripped and the remaining path is resolved against the current bundle MASL for that entry.
 4. Bytes are streamed to the client (static-root content directly from disk; uploaded content from the blob store).

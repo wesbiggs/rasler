@@ -2,12 +2,15 @@ import { Router } from 'express';
 import { realpathSync } from 'fs';
 import { parseMasl, resolveBundleEntry } from '../masl/document.js';
 import { cidToUnencodedDigest } from '../crypto/cid.js';
+import { OPERATOR_SECRET_HEADER } from '../middleware/auth.js';
 
 // Returns the first mount point whose hostname and prefix match the request,
-// or null. mountPoints must be sorted longest-prefix-first.
+// or null. mountPoints must be sorted: longer prefix first, specific hostname
+// before wildcard (hostname='') at equal prefix lengths.
+// hostname='' matches any Host: value (or no Host: header).
 function findMountPoint(mountPoints, hostname, path) {
   for (const mp of mountPoints) {
-    if (mp.hostname !== hostname) continue;
+    if (mp.hostname !== '' && mp.hostname !== hostname) continue;
     if (mp.prefix === '' || path === mp.prefix || path.startsWith(mp.prefix + '/')) {
       return mp;
     }
@@ -28,6 +31,10 @@ export function makeMountPointRouter({ store, mountPoints, selfOrigin }) {
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
     // Leave RASL retrieval paths to the RASL router.
     if (req.path.startsWith('/.well-known/rasl/')) return next();
+    // Operator API requests (identified by the secret header) bypass mount-point
+    // routing so authenticated operator paths are always reachable even when a
+    // wildcard mount is configured.
+    if (req.headers[OPERATOR_SECRET_HEADER]) return next();
 
     let maslCid;
     let maslPath;

@@ -576,13 +576,15 @@ export function makeOperatorRouter({ store, selfOrigin, apiSecret, corsOrigins =
    *     tags: [Content]
    *     summary: List all virtual hosts and their current MASL CIDs
    *     description: >
-   *       Returns all virtual hosts: those set via the operator API (`source:
+   *       Returns all mount points: those set via the operator API (`source:
    *       runtime`) and those configured in MOUNT_POINTS (`source: static`).
-   *       Runtime entries take priority in serving. `maslCid` is null only for
-   *       static entries whose background indexing has not yet completed.
+   *       Runtime entries take priority in serving. `hostname` is null for
+   *       wildcard entries that match any `Host:` header. `maslCid` is null
+   *       only for static entries whose background indexing has not yet
+   *       completed.
    *     responses:
    *       '200':
-   *         description: Virtual host list
+   *         description: Mount point list
    *         content:
    *           application/json:
    *             schema:
@@ -592,6 +594,10 @@ export function makeOperatorRouter({ store, selfOrigin, apiSecret, corsOrigins =
    *                 properties:
    *                   hostname:
    *                     type: string
+   *                     nullable: true
+   *                     description: >
+   *                       Hostname matched by this mount point, or null for
+   *                       a wildcard entry that matches any Host: header.
    *                   mountPath:
    *                     type: string
    *                     description: URL path prefix for this mount point (e.g. / or /docs)
@@ -616,7 +622,7 @@ export function makeOperatorRouter({ store, selfOrigin, apiSecret, corsOrigins =
     for (const mp of store.runtimeMountPoints) {
       const key = `${mp.hostname}|${mp.prefix}`;
       seen.add(key);
-      result.push({ hostname: mp.hostname, mountPath: mp.prefix || '/', path: null, maslCid: mp.maslCid, source: 'runtime' });
+      result.push({ hostname: mp.hostname || null, mountPath: mp.prefix || '/', path: null, maslCid: mp.maslCid, source: 'runtime' });
     }
 
     // Config-backed entries not overridden by a runtime mapping at the same (hostname, prefix).
@@ -625,7 +631,7 @@ export function makeOperatorRouter({ store, selfOrigin, apiSecret, corsOrigins =
       if (seen.has(key)) continue;
       let maslCid = null;
       try { maslCid = store.staticRootMasls.get(realpathSync(mp.directory)) ?? null; } catch { /* directory may not exist */ }
-      result.push({ hostname: mp.hostname, mountPath: mp.prefix || '/', path: mp.directory, maslCid, source: 'static' });
+      result.push({ hostname: mp.hostname || null, mountPath: mp.prefix || '/', path: mp.directory, maslCid, source: 'static' });
     }
 
     return res.status(200).json(result);
@@ -640,16 +646,22 @@ export function makeOperatorRouter({ store, selfOrigin, apiSecret, corsOrigins =
    *     description: >
    *       Registers a runtime mount point at the hostname root. To mount at a
    *       path prefix instead, append it to the URL:
-   *       `PUT /mount-points/{hostname}/{prefix}`. The MASL CID must already be
-   *       held locally and must be a bundle MASL. The MASL is pinned automatically
-   *       to prevent eviction. This mapping takes priority over any static-root
-   *       mapping for the same (hostname, mountPath) and persists across restarts.
+   *       `PUT /mount-points/{hostname}/{prefix}`. Use `-` as the hostname to
+   *       create a wildcard mount point that matches any `Host:` header value
+   *       (e.g. `PUT /mount-points/-` or `PUT /mount-points/-/docs`). The MASL
+   *       CID must already be held locally and must be a bundle MASL. The MASL
+   *       is pinned automatically to prevent eviction. This mapping takes
+   *       priority over any static-root mapping for the same (hostname,
+   *       mountPath) and persists across restarts.
    *     parameters:
    *       - in: path
    *         name: hostname
    *         required: true
    *         schema:
    *           type: string
+   *         description: >
+   *           Hostname to match against the `Host:` header. Use `-` to match
+   *           any hostname (wildcard).
    *     requestBody:
    *       required: true
    *       content:
@@ -670,6 +682,8 @@ export function makeOperatorRouter({ store, selfOrigin, apiSecret, corsOrigins =
    *               properties:
    *                 hostname:
    *                   type: string
+   *                   nullable: true
+   *                   description: Matched hostname, or null for a wildcard mount
    *                 mountPath:
    *                   type: string
    *                 maslCid:
@@ -693,13 +707,16 @@ export function makeOperatorRouter({ store, selfOrigin, apiSecret, corsOrigins =
    *     summary: Remove a runtime mount point mapping (root)
    *     description: >
    *       Removes the root mapping for this hostname. To remove a prefixed
-   *       mapping, use `DELETE /mount-points/{hostname}/{prefix}`.
+   *       mapping, use `DELETE /mount-points/{hostname}/{prefix}`. Use `-` as
+   *       the hostname to target a wildcard mount point.
    *     parameters:
    *       - in: path
    *         name: hostname
    *         required: true
    *         schema:
    *           type: string
+   *         description: >
+   *           Hostname of the mapping to remove. Use `-` for a wildcard mount.
    *     responses:
    *       '200':
    *         description: Mapping removed
@@ -727,12 +744,15 @@ export function makeOperatorRouter({ store, selfOrigin, apiSecret, corsOrigins =
    *     description: >
    *       Same as `PUT /mount-points/{hostname}` but mounts at a path prefix
    *       (e.g. `/docs`). The prefix is stripped before MASL resource lookup.
+   *       Use `-` as the hostname for a wildcard mount at the given prefix.
    *     parameters:
    *       - in: path
    *         name: hostname
    *         required: true
    *         schema:
    *           type: string
+   *         description: >
+   *           Hostname to match, or `-` for any hostname.
    *       - in: path
    *         name: prefix
    *         required: true
@@ -758,6 +778,8 @@ export function makeOperatorRouter({ store, selfOrigin, apiSecret, corsOrigins =
    *               properties:
    *                 hostname:
    *                   type: string
+   *                   nullable: true
+   *                   description: Matched hostname, or null for a wildcard mount
    *                 mountPath:
    *                   type: string
    *                 maslCid:
@@ -777,6 +799,8 @@ export function makeOperatorRouter({ store, selfOrigin, apiSecret, corsOrigins =
    *         required: true
    *         schema:
    *           type: string
+   *         description: >
+   *           Hostname of the mapping to remove. Use `-` for a wildcard mount.
    *       - in: path
    *         name: prefix
    *         required: true
@@ -808,7 +832,8 @@ export function makeOperatorRouter({ store, selfOrigin, apiSecret, corsOrigins =
   }
 
   function handleMountPointPut(req, res) {
-    const { hostname } = req.params;
+    const { hostname: hostnameParam } = req.params;
+    const hostname = hostnameParam === '-' ? '' : hostnameParam;
     const prefix = getMountPrefix(req);
     const { maslCid } = req.body ?? {};
     if (!maslCid || typeof maslCid !== 'string') {
@@ -830,11 +855,12 @@ export function makeOperatorRouter({ store, selfOrigin, apiSecret, corsOrigins =
     }
     store.setPinned(maslCid, true);
     store.setMountPoint(hostname, prefix, maslCid);
-    return res.status(200).json({ hostname, mountPath: prefix || '/', maslCid });
+    return res.status(200).json({ hostname: hostname || null, mountPath: prefix || '/', maslCid });
   }
 
   function handleMountPointDelete(req, res) {
-    const { hostname } = req.params;
+    const { hostname: hostnameParam } = req.params;
+    const hostname = hostnameParam === '-' ? '' : hostnameParam;
     const prefix = getMountPrefix(req);
     const exists = store.runtimeMountPoints.some(mp => mp.hostname === hostname && mp.prefix === prefix);
     if (!exists) {

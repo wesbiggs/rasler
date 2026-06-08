@@ -126,7 +126,7 @@ content (
 )
 
 mount_points (
-  hostname TEXT NOT NULL,
+  hostname TEXT NOT NULL,   -- '' = wildcard (matches any Host: header)
   mount_path TEXT NOT NULL DEFAULT '',  -- normalised prefix, '' = root
   masl_cid TEXT NOT NULL,
   PRIMARY KEY (hostname, mount_path)
@@ -151,12 +151,12 @@ The `prev` field links to the previous bundle MASL, forming a hash chain. On re-
 
 **Static roots** are local directories indexed at startup by `indexStaticRoot()` in `static.js`. Each file is stat'd and compared against the DB (size + mtime). On a cache hit the stored CID is reused; on a miss the file is hashed. A bundle MASL is built for the root and stored pinned. The `staticRootMasls` map in `Store` (realpath → maslCid) is updated in memory so the mount-point router always reads the latest version without a DB query.
 
-**Mount points** map a `Host:` header value (plus an optional URL path prefix) to a bundle MASL. Two sources, priority order:
+**Mount points** map an optional `Host:` header value (plus an optional URL path prefix) to a bundle MASL. A mount point with no hostname (stored as `''`) is a wildcard that matches any `Host:` value. Two sources, priority order:
 
 1. **Runtime** — set via `PUT /mount-points/:hostname[/:prefix]`, persisted in the `mount_points` SQLite table, loaded into `store.runtimeMountPoints` on startup and kept in sync in memory.
 2. **Static** — derived from `MOUNT_POINTS` env config; the directory is automatically added to static roots.
 
-Entries are sorted longest-prefix-first so more specific mounts win. The mount-point router checks runtime entries first, then static.
+Entries are sorted longest-prefix-first; at equal prefix length, specific-hostname entries are checked before wildcard (`hostname=''`) entries. The mount-point router checks runtime entries first, then static.
 
 ## Configuration
 

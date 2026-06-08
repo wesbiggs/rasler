@@ -24,8 +24,12 @@ const mountPoints = parseJsonMountPoints(raslerConfig?.mountPoints ?? []);
 const staticRoots = parseJsonStaticRoots(raslerConfig?.staticRoots ?? []);
 const mountPointDirs = new Set(mountPoints.map(mp => mp.directory));
 for (const dir of mountPointDirs) {
-  if (!staticRoots.some(r => r.directory === dir)) {
-    staticRoots.push({ directory: dir, watch: false, ignore: [] });
+  const existing = staticRoots.find(r => r.directory === dir);
+  if (!existing) {
+    staticRoots.push({ directory: dir, watch: false, ignore: [], generateMasl: true });
+  } else if (!existing.generateMasl) {
+    // Mount-point directories always need a bundle MASL for serving.
+    existing.generateMasl = true;
   }
 }
 
@@ -34,9 +38,9 @@ for (const dir of mountPointDirs) {
 const publicDir = resolve(process.cwd(), 'public');
 if (existsSync(publicDir)) {
   if (!staticRoots.some(r => r.directory === publicDir)) {
-    staticRoots.push({ directory: publicDir, watch: false, ignore: [] });
+    staticRoots.push({ directory: publicDir, watch: false, ignore: [], generateMasl: true });
   }
-  if (!mountPoints.some(mp => mp.hostname === originUrl.hostname && mp.prefix === '')) {
+  if (!mountPoints.some(mp => (mp.hostname === originUrl.hostname || mp.hostname === '') && mp.prefix === '')) {
     mountPoints.push({ hostname: originUrl.hostname, prefix: '', directory: publicDir });
     mountPoints.sort((a, b) => b.prefix.length - a.prefix.length);
   }

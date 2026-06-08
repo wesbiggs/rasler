@@ -476,10 +476,10 @@
           "Content"
         ],
         "summary": "List all virtual hosts and their current MASL CIDs",
-        "description": "Returns all virtual hosts: those set via the operator API (`source: runtime`) and those configured in MOUNT_POINTS (`source: static`). Runtime entries take priority in serving. `maslCid` is null only for static entries whose background indexing has not yet completed.\n",
+        "description": "Returns all mount points: those set via the operator API (`source: runtime`) and those configured in MOUNT_POINTS (`source: static`). Runtime entries take priority in serving. `hostname` is null for wildcard entries that match any `Host:` header. `maslCid` is null only for static entries whose background indexing has not yet completed.\n",
         "responses": {
           "200": {
-            "description": "Virtual host list",
+            "description": "Mount point list",
             "content": {
               "application/json": {
                 "schema": {
@@ -488,7 +488,9 @@
                     "type": "object",
                     "properties": {
                       "hostname": {
-                        "type": "string"
+                        "type": "string",
+                        "nullable": true,
+                        "description": "Hostname matched by this mount point, or null for a wildcard entry that matches any Host: header.\n"
                       },
                       "mountPath": {
                         "type": "string",
@@ -528,7 +530,7 @@
           "Content"
         ],
         "summary": "Map a hostname to a bundle MASL CID (root mount)",
-        "description": "Registers a runtime mount point at the hostname root. To mount at a path prefix instead, append it to the URL: `PUT /mount-points/{hostname}/{prefix}`. The MASL CID must already be held locally and must be a bundle MASL. The MASL is pinned automatically to prevent eviction. This mapping takes priority over any static-root mapping for the same (hostname, mountPath) and persists across restarts.\n",
+        "description": "Registers a runtime mount point at the hostname root. To mount at a path prefix instead, append it to the URL: `PUT /mount-points/{hostname}/{prefix}`. Use `-` as the hostname to create a wildcard mount point that matches any `Host:` header value (e.g. `PUT /mount-points/-` or `PUT /mount-points/-/docs`). The MASL CID must already be held locally and must be a bundle MASL. The MASL is pinned automatically to prevent eviction. This mapping takes priority over any static-root mapping for the same (hostname, mountPath) and persists across restarts.\n",
         "parameters": [
           {
             "in": "path",
@@ -536,7 +538,8 @@
             "required": true,
             "schema": {
               "type": "string"
-            }
+            },
+            "description": "Hostname to match against the `Host:` header. Use `-` to match any hostname (wildcard).\n"
           }
         ],
         "requestBody": {
@@ -566,7 +569,9 @@
                   "type": "object",
                   "properties": {
                     "hostname": {
-                      "type": "string"
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Matched hostname, or null for a wildcard mount"
                     },
                     "mountPath": {
                       "type": "string"
@@ -609,7 +614,7 @@
           "Content"
         ],
         "summary": "Remove a runtime mount point mapping (root)",
-        "description": "Removes the root mapping for this hostname. To remove a prefixed mapping, use `DELETE /mount-points/{hostname}/{prefix}`.\n",
+        "description": "Removes the root mapping for this hostname. To remove a prefixed mapping, use `DELETE /mount-points/{hostname}/{prefix}`. Use `-` as the hostname to target a wildcard mount point.\n",
         "parameters": [
           {
             "in": "path",
@@ -617,7 +622,8 @@
             "required": true,
             "schema": {
               "type": "string"
-            }
+            },
+            "description": "Hostname of the mapping to remove. Use `-` for a wildcard mount.\n"
           }
         ],
         "responses": {
@@ -661,7 +667,7 @@
           "Content"
         ],
         "summary": "Map a hostname + path prefix to a bundle MASL CID",
-        "description": "Same as `PUT /mount-points/{hostname}` but mounts at a path prefix (e.g. `/docs`). The prefix is stripped before MASL resource lookup.\n",
+        "description": "Same as `PUT /mount-points/{hostname}` but mounts at a path prefix (e.g. `/docs`). The prefix is stripped before MASL resource lookup. Use `-` as the hostname for a wildcard mount at the given prefix.\n",
         "parameters": [
           {
             "in": "path",
@@ -669,7 +675,8 @@
             "required": true,
             "schema": {
               "type": "string"
-            }
+            },
+            "description": "Hostname to match, or `-` for any hostname.\n"
           },
           {
             "in": "path",
@@ -707,7 +714,9 @@
                   "type": "object",
                   "properties": {
                     "hostname": {
-                      "type": "string"
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Matched hostname, or null for a wildcard mount"
                     },
                     "mountPath": {
                       "type": "string"
@@ -743,7 +752,8 @@
             "required": true,
             "schema": {
               "type": "string"
-            }
+            },
+            "description": "Hostname of the mapping to remove. Use `-` for a wildcard mount.\n"
           },
           {
             "in": "path",
