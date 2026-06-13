@@ -25,6 +25,7 @@ function pipeContent(store, cid, res, _next) {
   const result = store.getContentStream(cid);
   if (!result) return res.status(502).json({ error: 'Content unavailable' });
   res.set('content-length', String(result.meta.size));
+  res.set('unencoded-digest', cidToUnencodedDigest(cid));
   res.status(200);
   result.stream.pipe(res);
 }
@@ -71,7 +72,6 @@ export function makeRaslRouter({ store }) {
         }
       }
       res.set(headers);
-      res.set('unencoded-digest', cidToUnencodedDigest(cid));
       return pipeContent(store, cid, res, next);
     }
 
@@ -93,7 +93,6 @@ export function makeRaslRouter({ store }) {
         if (!resolved) return res.status(404).json({ error: 'Not found' });
         store.recordRequest(resolved.cid);
         res.set(resolved.headers);
-        res.set('unencoded-digest', cidToUnencodedDigest(resolved.cid));
         return pipeContent(store, resolved.cid, res, next);
       }
 
@@ -104,7 +103,6 @@ export function makeRaslRouter({ store }) {
         if (path !== '/') return res.status(404).json({ error: 'Not found' });
         store.recordRequest(srcCid);
         res.set(maslContentHeaders(doc));
-        res.set('unencoded-digest', cidToUnencodedDigest(srcCid));
         return pipeContent(store, srcCid, res, next);
       }
 
@@ -115,7 +113,6 @@ export function makeRaslRouter({ store }) {
     // any other path is not found.
     if (path !== '/') return res.status(404).json({ error: 'Not found' });
     res.set({ 'content-type': 'application/octet-stream' });
-    res.set('unencoded-digest', cidToUnencodedDigest(cid));
     return pipeContent(store, cid, res, next);
   }
 
