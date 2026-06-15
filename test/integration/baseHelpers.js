@@ -2,6 +2,8 @@ import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { openDb } from '../../src/storage/db.js';
+import { makeLocalDb } from '../../src/storage/local-db.js';
+import { makeLocalBlobs } from '../../src/storage/local-blobs.js';
 import { Store } from '../../src/storage/store.js';
 import { createApp, finalizeApp } from '../../src/server.js';
 import { makeRaslNotFoundHandler } from '../../src/routes/rasl.js';
@@ -17,8 +19,9 @@ export function makeBaseTestApp({
   mountPoints = [],
 } = {}) {
   const dataDir = mkdtempSync(join(tmpdir(), 'base-int-'));
-  const db = openDb(dataDir);
-  const store = new Store(db, dataDir, totalCapacity, { staticRoots });
+  const db = makeLocalDb(openDb(dataDir));
+  const blobs = makeLocalBlobs(dataDir);
+  const store = new Store(db, blobs, totalCapacity, { staticRoots });
 
   const config = {
     origin, domain: new URL(origin).host, port: 0, apiSecret, totalCapacity, dataDir,

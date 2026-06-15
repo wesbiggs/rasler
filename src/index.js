@@ -1,5 +1,7 @@
 import config from './config.js';
 import { openDb } from './storage/db.js';
+import { makeLocalDb } from './storage/local-db.js';
+import { makeLocalBlobs } from './storage/local-blobs.js';
 import { Store } from './storage/store.js';
 import { createApp, finalizeApp } from './server.js';
 import { makeRaslNotFoundHandler } from './routes/rasl.js';
@@ -8,15 +10,13 @@ import { indexStaticRoots } from './static.js';
 import { startStaticRootWatchers } from './watcher.js';
 
 function main() {
-  const db = openDb(config.dataDir);
-  const store = new Store(db, config.dataDir, config.totalCapacity, {
+  const rawDb = openDb(config.dataDir);
+  const db = makeLocalDb(rawDb);
+  const blobs = makeLocalBlobs(config.dataDir);
+  const store = new Store(db, blobs, config.totalCapacity, {
     staticRoots: config.staticRoots,
   });
 
-  // Index static roots in the background so the server starts immediately.
-  // Watchers start after the initial index so startup writes don't trigger
-  // spurious re-indexes. On a warm restart (no file changes) the mtime cache
-  // makes the window negligible.
   if (config.staticRoots.length > 0) {
     indexStaticRoots(config.staticRoots, store, { maxHistory: config.staticMaxHistory })
       .then(() => startStaticRootWatchers(config.staticRoots, store, { maxHistory: config.staticMaxHistory }));

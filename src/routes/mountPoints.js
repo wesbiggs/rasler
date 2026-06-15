@@ -4,10 +4,6 @@ import { parseMasl, resolveBundleEntry } from '../masl/document.js';
 import { cidToUnencodedDigest } from '../crypto/cid.js';
 import { OPERATOR_SECRET_HEADER } from '../middleware/auth.js';
 
-// Returns the first mount point whose hostname and prefix match the request,
-// or null. mountPoints must be sorted: longer prefix first, specific hostname
-// before wildcard (hostname='') at equal prefix lengths.
-// hostname='' matches any Host: value (or no Host: header).
 function findMountPoint(mountPoints, hostname, path) {
   for (const mp of mountPoints) {
     if (mp.hostname !== '' && mp.hostname !== hostname) continue;
@@ -18,28 +14,17 @@ function findMountPoint(mountPoints, hostname, path) {
   return null;
 }
 
-// Serves content by resolving the request path against the bundle MASL for
-// the matching mount point. Sits before the RASL router so browser clients
-// can use normal URLs; RASL paths are passed through unchanged.
-//
-// The MASL CID is read from store.staticRootMasls on every request, so it
-// reflects the current indexed version automatically after any re-index.
 export function makeMountPointRouter({ store, mountPoints, selfOrigin }) {
   const router = Router();
 
-  router.use((req, res, next) => {
+  router.use(async (req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
-    // Leave RASL retrieval paths to the RASL router.
     if (req.path.startsWith('/.well-known/rasl/')) return next();
-    // Operator API requests (identified by the secret header) bypass mount-point
-    // routing so authenticated operator paths are always reachable even when a
-    // wildcard mount is configured.
     if (req.headers[OPERATOR_SECRET_HEADER]) return next();
 
     let maslCid;
     let maslPath;
 
-    // Runtime mappings take priority over static-root mappings.
     const runtimeMp = findMountPoint(store.runtimeMountPoints, req.hostname, req.path);
     if (runtimeMp) {
       maslCid = runtimeMp.maslCid;
@@ -57,7 +42,7 @@ export function makeMountPointRouter({ store, mountPoints, selfOrigin }) {
       maslPath = staticMp.prefix ? req.path.slice(staticMp.prefix.length) || '/' : req.path;
     }
 
-    const maslEntry = store.getContent(maslCid);
+    const maslEntry = await store.getContent(maslCid);
     if (!maslEntry) return res.status(503).json({ error: 'MASL unavailable' });
 
     let doc;
@@ -68,10 +53,10 @@ export function makeMountPointRouter({ store, mountPoints, selfOrigin }) {
     const resolved = resolveBundleEntry(doc, maslPath);
     if (!resolved) return res.status(404).send('Not found');
 
-    store.recordRequest(maslCid);
-    store.recordRequest(resolved.cid);
+    await store.recordRequest(maslCid);
+    await store.recordRequest(resolved.cid);
 
-    const result = store.getContentStream(resolved.cid);
+    const result = await store.getContentStream(resolved.cid);
     if (!result) return res.status(502).json({ error: 'Content unavailable' });
 
     res.set(resolved.headers);

@@ -1,36 +1,14 @@
-import {
-  dbPutContent, dbGetContent, dbHasContent, dbListContent, dbDeleteContent,
-  dbRecordRequest, dbSetPinned, dbGetTotalPoolSize, dbGetTotalPinnedSize,
-  dbCountPinned, dbCountContent, dbListContentPage,
-  dbSetMountPoint, dbDeleteMountPoint, dbListMountPoints,
-} from './db.js';
 import { sortMountPoints } from '../util/parseJsonConfig.js';
-import {
-  writeContent, readContent, readContentFromPath,
-  readContentStream, readContentStreamFromPath, deleteContent,
-} from './files.js';
 import { realpathSync } from 'fs';
 import { sep } from 'path';
 
-// Default eviction policy: oldest unpinned by last_requested (LRU).
-// An overlay can supply a network-aware policy that considers
-// replica counts and primary-holder status.
-function defaultFindEvictionCandidate(store) {
-  const row = store.db.prepare(`
-    SELECT cid FROM content
-    WHERE pinned = 0
-    ORDER BY last_requested ASC NULLS FIRST
-    LIMIT 1
-  `).get();
-  return row?.cid ?? null;
-}
-
 export class Store {
-  constructor(db, dataDir, totalCapacity, { findEvictionCandidate, staticRoots = [] } = {}) {
+  // db: DbAdapter (see local-db.js for the interface)
+  // blobs: BlobBackend (see local-blobs.js for the interface)
+  constructor(db, blobs, totalCapacity, { staticRoots = [] } = {}) {
     this.db = db;
-    this.dataDir = dataDir;
+    this.blobs = blobs;
     this.totalCapacity = totalCapacity;
-    this._findEvictionCandidate = findEvictionCandidate ?? defaultFindEvictionCandidate;
     // Pre-resolve static roots once so symlink checks at serve time are fast.
     this._realStaticRoots = staticRoots.map(r => {
       const dir = typeof r === 'string' ? r : r.directory;
@@ -38,41 +16,29 @@ export class Store {
     });
     // Populated by indexStaticRoot after each root is indexed. Maps realpath → maslCid.
     this.staticRootMasls = new Map();
-    // Runtime mount point mappings set via operator API. Persisted in SQLite.
+    // Runtime mount point mappings set via operator API. Persisted in the db adapter.
     // Array of {hostname, prefix, maslCid} — hostname='' means any host.
-    // Sorted: longer prefix first; equal prefix: specific hostname before wildcard.
-    // Takes priority over staticRootMasls in mount-point routing.
-    const runtimeRows = dbListMountPoints(db)
+    const runtimeRows = db.listMountPoints()
       .map(row => ({ hostname: row.hostname, prefix: row.mount_path, maslCid: row.masl_cid }));
     sortMountPoints(runtimeRows);
     this.runtimeMountPoints = runtimeRows;
   }
 
-  putContent(cid, bytes, { maslCid = null, pinned = false } = {}) {
-    writeContent(this.dataDir, cid, bytes);
-    dbPutContent(this.db, cid, {
-      maslCid,
-      size: bytes.length,
-      pinned,
-      lastRequested: null,
-    });
+  async putContent(cid, bytes, { maslCid = null, pinned = false } = {}) {
+    this.blobs.put(cid, bytes);
+    this.db.putContent(cid, { maslCid, size: bytes.length, pinned, lastRequested: null });
   }
 
-  getContent(cid) {
-    const meta = dbGetContent(this.db, cid);
+  async getContent(cid) {
+    const meta = this.db.getContent(cid);
     if (!meta) return null;
-    const bytes = meta.source_path
-      ? readContentFromPath(meta.source_path)
-      : readContent(this.dataDir, cid);
+    const bytes = this.blobs.get(cid, meta);
     if (!bytes) return null;
     return { bytes, meta };
   }
 
-  // Returns { stream: ReadStream, meta } for efficient large-file serving,
-  // or null if the content is unavailable. For static entries, verifies
-  // that source_path still resolves to a path under a configured static root.
-  getContentStream(cid) {
-    const meta = dbGetContent(this.db, cid);
+  async getContentStream(cid) {
+    const meta = this.db.getContent(cid);
     if (!meta) return null;
     if (meta.source_path) {
       let realFile;
@@ -81,72 +47,64 @@ export class Store {
         root => realFile === root || realFile.startsWith(root + sep)
       );
       if (!allowed) return null;
-      const stream = readContentStreamFromPath(meta.source_path);
-      if (!stream) return null;
-      return { stream, meta };
     }
-    const stream = readContentStream(this.dataDir, cid);
+    const stream = this.blobs.getStream(cid, meta);
     if (!stream) return null;
     return { stream, meta };
   }
 
-  getContentMeta(cid) {
-    return dbGetContent(this.db, cid);
+  async getContentMeta(cid) {
+    return this.db.getContent(cid);
   }
 
-  hasContent(cid) {
-    return dbHasContent(this.db, cid);
+  async hasContent(cid) {
+    return this.db.hasContent(cid);
   }
 
-  listContent() {
-    return dbListContent(this.db);
+  async listContent() {
+    return this.db.listContent();
   }
 
-  countContent() {
-    return dbCountContent(this.db);
+  async countContent() {
+    return this.db.countContent();
   }
 
-  listContentPage(limit, cursor) {
-    return dbListContentPage(this.db, limit, cursor);
+  async listContentPage(limit, cursor) {
+    return this.db.listContentPage(limit, cursor);
   }
 
-  deleteContent(cid) {
-    const meta = dbGetContent(this.db, cid);
-    // Static content: bytes live on operator's filesystem; only remove the DB record.
-    if (!meta?.source_path) deleteContent(this.dataDir, cid);
-    dbDeleteContent(this.db, cid);
+  async deleteContent(cid) {
+    const meta = this.db.getContent(cid);
+    if (!meta?.source_path) this.blobs.delete(cid);
+    this.db.deleteContent(cid);
   }
 
-  recordRequest(cid) {
-    dbRecordRequest(this.db, cid);
+  async recordRequest(cid) {
+    this.db.recordRequest(cid);
   }
 
-  setPinned(cid, pinned) {
-    dbSetPinned(this.db, cid, pinned);
+  async setPinned(cid, pinned) {
+    this.db.setPinned(cid, pinned);
   }
 
-  getPoolUsed() {
-    return dbGetTotalPoolSize(this.db);
+  async getPoolUsed() {
+    return this.db.getTotalPoolSize();
   }
 
-  getPinnedUsed() {
-    return dbGetTotalPinnedSize(this.db);
+  async getPinnedUsed() {
+    return this.db.getTotalPinnedSize();
   }
 
-  getPoolAvailable() {
-    return Math.max(0, this.totalCapacity - this.getPoolUsed() - this.getPinnedUsed());
+  async getPoolAvailable() {
+    return Math.max(0, this.totalCapacity - this.db.getTotalPoolSize() - this.db.getTotalPinnedSize());
   }
 
-  countPinned() {
-    return dbCountPinned(this.db);
+  async countPinned() {
+    return this.db.countPinned();
   }
 
-  // Evicts one CID if needed to free requiredBytes. Returns true if eviction
-  // was performed or not needed, false if impossible. The eviction policy is
-  // injected via the constructor; replica-row cleanup happens automatically
-  // via FK cascade on the replicas table.
-  setMountPoint(hostname, prefix, maslCid) {
-    dbSetMountPoint(this.db, hostname, prefix, maslCid);
+  async setMountPoint(hostname, prefix, maslCid) {
+    this.db.setMountPoint(hostname, prefix, maslCid);
     this.runtimeMountPoints = this.runtimeMountPoints.filter(
       mp => !(mp.hostname === hostname && mp.prefix === prefix)
     );
@@ -154,18 +112,31 @@ export class Store {
     sortMountPoints(this.runtimeMountPoints);
   }
 
-  deleteMountPoint(hostname, prefix) {
-    dbDeleteMountPoint(this.db, hostname, prefix);
+  async deleteMountPoint(hostname, prefix) {
+    this.db.deleteMountPoint(hostname, prefix);
     this.runtimeMountPoints = this.runtimeMountPoints.filter(
       mp => !(mp.hostname === hostname && mp.prefix === prefix)
     );
   }
 
-  evictIfNeeded(requiredBytes) {
-    if (this.getPoolAvailable() >= requiredBytes) return true;
-    const cid = this._findEvictionCandidate(this);
+  async evictIfNeeded(requiredBytes) {
+    if (await this.getPoolAvailable() >= requiredBytes) return true;
+    const cid = this.db.findEvictionCandidate();
     if (!cid) return false;
-    this.deleteContent(cid);
+    await this.deleteContent(cid);
     return true;
+  }
+
+  // Static-content methods (local Node.js deployment only).
+  async putStaticContent(cid, opts) {
+    this.db.putStaticContent(cid, opts);
+  }
+
+  async getContentBySourcePath(sourcePath) {
+    return this.db.getContentBySourcePath(sourcePath);
+  }
+
+  async listStaticContent() {
+    return this.db.listStaticContent();
   }
 }
