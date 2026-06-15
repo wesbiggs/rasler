@@ -18,27 +18,41 @@ export class Store {
     this.staticRootMasls = new Map();
     // Runtime mount point mappings set via operator API. Persisted in the db adapter.
     // Array of {hostname, prefix, maslCid} — hostname='' means any host.
-    const runtimeRows = db.listMountPoints()
-      .map(row => ({ hostname: row.hostname, prefix: row.mount_path, maslCid: row.masl_cid }));
-    sortMountPoints(runtimeRows);
-    this.runtimeMountPoints = runtimeRows;
+    // Callers that use an async db adapter must call store.loadMountPoints() after construction.
+    const mpResult = db.listMountPoints();
+    const rows = Array.isArray(mpResult)
+      ? mpResult
+      : []; // async adapters return a Promise; callers must await loadMountPoints()
+    this.runtimeMountPoints = rows.map(
+      row => ({ hostname: row.hostname, prefix: row.mount_path, maslCid: row.masl_cid })
+    );
+    sortMountPoints(this.runtimeMountPoints);
+  }
+
+  // Must be called after construction when using an async db adapter (e.g. D1).
+  async loadMountPoints() {
+    const rows = await this.db.listMountPoints();
+    this.runtimeMountPoints = rows.map(
+      row => ({ hostname: row.hostname, prefix: row.mount_path, maslCid: row.masl_cid })
+    );
+    sortMountPoints(this.runtimeMountPoints);
   }
 
   async putContent(cid, bytes, { maslCid = null, pinned = false } = {}) {
-    this.blobs.put(cid, bytes);
-    this.db.putContent(cid, { maslCid, size: bytes.length, pinned, lastRequested: null });
+    await this.blobs.put(cid, bytes);
+    await this.db.putContent(cid, { maslCid, size: bytes.length, pinned, lastRequested: null });
   }
 
   async getContent(cid) {
-    const meta = this.db.getContent(cid);
+    const meta = await this.db.getContent(cid);
     if (!meta) return null;
-    const bytes = this.blobs.get(cid, meta);
+    const bytes = await this.blobs.get(cid, meta);
     if (!bytes) return null;
     return { bytes, meta };
   }
 
   async getContentStream(cid) {
-    const meta = this.db.getContent(cid);
+    const meta = await this.db.getContent(cid);
     if (!meta) return null;
     if (meta.source_path) {
       let realFile;
@@ -48,7 +62,7 @@ export class Store {
       );
       if (!allowed) return null;
     }
-    const stream = this.blobs.getStream(cid, meta);
+    const stream = await this.blobs.getStream(cid, meta);
     if (!stream) return null;
     return { stream, meta };
   }
@@ -74,17 +88,17 @@ export class Store {
   }
 
   async deleteContent(cid) {
-    const meta = this.db.getContent(cid);
-    if (!meta?.source_path) this.blobs.delete(cid);
-    this.db.deleteContent(cid);
+    const meta = await this.db.getContent(cid);
+    if (!meta?.source_path) await this.blobs.delete(cid);
+    await this.db.deleteContent(cid);
   }
 
   async recordRequest(cid) {
-    this.db.recordRequest(cid);
+    await this.db.recordRequest(cid);
   }
 
   async setPinned(cid, pinned) {
-    this.db.setPinned(cid, pinned);
+    await this.db.setPinned(cid, pinned);
   }
 
   async getPoolUsed() {
@@ -96,7 +110,9 @@ export class Store {
   }
 
   async getPoolAvailable() {
-    return Math.max(0, this.totalCapacity - this.db.getTotalPoolSize() - this.db.getTotalPinnedSize());
+    const pool = await this.db.getTotalPoolSize();
+    const pinned = await this.db.getTotalPinnedSize();
+    return Math.max(0, this.totalCapacity - pool - pinned);
   }
 
   async countPinned() {
@@ -104,7 +120,7 @@ export class Store {
   }
 
   async setMountPoint(hostname, prefix, maslCid) {
-    this.db.setMountPoint(hostname, prefix, maslCid);
+    await this.db.setMountPoint(hostname, prefix, maslCid);
     this.runtimeMountPoints = this.runtimeMountPoints.filter(
       mp => !(mp.hostname === hostname && mp.prefix === prefix)
     );
@@ -113,7 +129,7 @@ export class Store {
   }
 
   async deleteMountPoint(hostname, prefix) {
-    this.db.deleteMountPoint(hostname, prefix);
+    await this.db.deleteMountPoint(hostname, prefix);
     this.runtimeMountPoints = this.runtimeMountPoints.filter(
       mp => !(mp.hostname === hostname && mp.prefix === prefix)
     );
@@ -121,7 +137,7 @@ export class Store {
 
   async evictIfNeeded(requiredBytes) {
     if (await this.getPoolAvailable() >= requiredBytes) return true;
-    const cid = this.db.findEvictionCandidate();
+    const cid = await this.db.findEvictionCandidate();
     if (!cid) return false;
     await this.deleteContent(cid);
     return true;
@@ -129,7 +145,7 @@ export class Store {
 
   // Static-content methods (local Node.js deployment only).
   async putStaticContent(cid, opts) {
-    this.db.putStaticContent(cid, opts);
+    await this.db.putStaticContent(cid, opts);
   }
 
   async getContentBySourcePath(sourcePath) {
