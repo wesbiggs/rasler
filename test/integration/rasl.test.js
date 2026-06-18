@@ -33,7 +33,7 @@ describe('RASL routes', () => {
     it('serves a locally held data CID as octet-stream with Unencoded-Digest', async () => {
       const bytes = Buffer.from('hello world');
       const cid = await computeDataCid(bytes);
-      store.putContent(cid, bytes);
+      await store.putContent(cid, bytes);
 
       const res = await request(app).get(`/.well-known/rasl/${cid}`);
       expect(res.status).toBe(200);
@@ -51,8 +51,8 @@ describe('RASL routes', () => {
         size: bytes.length,
         dataCid: cid,
       });
-      store.putContent(cid, bytes, { maslCid });
-      store.putContent(maslCid, cborBytes, { pinned: true });
+      await store.putContent(cid, bytes, { maslCid });
+      await store.putContent(maslCid, cborBytes, { pinned: true });
 
       const res = await request(app).get(`/.well-known/rasl/${cid}`);
       expect(res.status).toBe(200);
@@ -69,8 +69,8 @@ describe('RASL routes', () => {
         size: bytes.length,
         dataCid: cid,
       });
-      store.putContent(cid, bytes, { maslCid });
-      store.putContent(maslCid, cborBytes, { pinned: true });
+      await store.putContent(cid, bytes, { maslCid });
+      await store.putContent(maslCid, cborBytes, { pinned: true });
 
       // Path-free form returns the raw MASL CBOR bytes, not the src resource.
       const res = await request(app).get(`/.well-known/rasl/${maslCid}`);
@@ -86,8 +86,8 @@ describe('RASL routes', () => {
         name: 'My Site',
         resources: [{ path: '/', cid: indexCid, size: indexBytes.length, contentType: 'text/html' }],
       });
-      store.putContent(indexCid, indexBytes);
-      store.putContent(bundleCid, bundleBytes);
+      await store.putContent(indexCid, indexBytes);
+      await store.putContent(bundleCid, bundleBytes);
 
       // Path-free returns raw bytes, not a redirect.
       const res = await request(app).get(`/.well-known/rasl/${bundleCid}`);
@@ -99,11 +99,11 @@ describe('RASL routes', () => {
     it('records last_requested on successful retrieval', async () => {
       const bytes = Buffer.from('track me');
       const cid = await computeDataCid(bytes);
-      store.putContent(cid, bytes);
+      await store.putContent(cid, bytes);
 
-      const before = store.getContent(cid).meta.last_requested;
+      const before = (await store.getContent(cid)).meta.last_requested;
       await request(app).get(`/.well-known/rasl/${cid}`);
-      const after = store.getContent(cid).meta.last_requested;
+      const after = (await store.getContent(cid)).meta.last_requested;
       expect(after).toBeGreaterThan(before ?? 0);
     });
   });
@@ -116,7 +116,7 @@ describe('RASL routes', () => {
       it('path "/" returns raw bytes with Unencoded-Digest', async () => {
         const bytes = Buffer.from('raw bytes');
         const cid = await computeDataCid(bytes);
-        store.putContent(cid, bytes);
+        await store.putContent(cid, bytes);
 
         const res = await request(app).get(`/.well-known/rasl/${cid}/`);
         expect(res.status).toBe(200);
@@ -128,7 +128,7 @@ describe('RASL routes', () => {
       it('non-"/" path returns 404', async () => {
         const bytes = Buffer.from('raw bytes');
         const cid = await computeDataCid(bytes);
-        store.putContent(cid, bytes);
+        await store.putContent(cid, bytes);
 
         const res = await request(app).get(`/.well-known/rasl/${cid}/picture.jpg`);
         expect(res.status).toBe(404);
@@ -145,8 +145,8 @@ describe('RASL routes', () => {
           size: bytes.length,
           dataCid: cid,
         });
-        store.putContent(cid, bytes, { maslCid });
-        store.putContent(maslCid, cborBytes, { pinned: true });
+        await store.putContent(cid, bytes, { maslCid });
+        await store.putContent(maslCid, cborBytes, { pinned: true });
 
         const res = await request(app).get(`/.well-known/rasl/${maslCid}/`);
         expect(res.status).toBe(200);
@@ -164,8 +164,8 @@ describe('RASL routes', () => {
           size: bytes.length,
           dataCid,
         });
-        store.putContent(dataCid, bytes, { maslCid });
-        store.putContent(maslCid, cborBytes, { pinned: true });
+        await store.putContent(dataCid, bytes, { maslCid });
+        await store.putContent(maslCid, cborBytes, { pinned: true });
 
         const res = await request(app).get(`/.well-known/rasl/${maslCid}/other.txt`);
         expect(res.status).toBe(404);
@@ -180,8 +180,8 @@ describe('RASL routes', () => {
           size: bytes.length,
           dataCid,
         });
-        store.putContent(dataCid, bytes, { maslCid });
-        store.putContent(maslCid, cborBytes, { pinned: true });
+        await store.putContent(dataCid, bytes, { maslCid });
+        await store.putContent(maslCid, cborBytes, { pinned: true });
 
         const res = await request(app).get(`/.well-known/rasl/${maslCid}/`);
         expect(res.status).toBe(200);
@@ -199,8 +199,8 @@ describe('RASL routes', () => {
           name: 'My Site',
           resources: [{ path: '/', cid: indexCid, size: indexBytes.length, contentType: 'text/html' }],
         });
-        store.putContent(indexCid, indexBytes);
-        store.putContent(bundleCid, bundleBytes);
+        await store.putContent(indexCid, indexBytes);
+        await store.putContent(bundleCid, bundleBytes);
 
         const res = await request(app).get(`/.well-known/rasl/${bundleCid}/`);
         expect(res.status).toBe(200);
@@ -221,9 +221,9 @@ describe('RASL routes', () => {
             { path: '/style.css', cid: cssCid, size: cssBytes.length, contentType: 'text/css' },
           ],
         });
-        store.putContent(indexCid, indexBytes);
-        store.putContent(cssCid, cssBytes);
-        store.putContent(bundleCid, bundleBytes);
+        await store.putContent(indexCid, indexBytes);
+        await store.putContent(cssCid, cssBytes);
+        await store.putContent(bundleCid, bundleBytes);
 
         const resCSS = await request(app).get(`/.well-known/rasl/${bundleCid}/style.css`);
         expect(resCSS.status).toBe(200);
@@ -241,8 +241,8 @@ describe('RASL routes', () => {
             { path: '/about/why-rasler/', cid: aboutCid, size: aboutBytes.length, contentType: 'text/html' },
           ],
         });
-        store.putContent(aboutCid, aboutBytes);
-        store.putContent(bundleCid, bundleBytes);
+        await store.putContent(aboutCid, aboutBytes);
+        await store.putContent(bundleCid, bundleBytes);
 
         const res = await request(app).get(`/.well-known/rasl/${bundleCid}/about/why-rasler/`);
         expect(res.status).toBe(200);
@@ -257,8 +257,8 @@ describe('RASL routes', () => {
           name: 'My Site',
           resources: [{ path: '/', cid: indexCid, size: indexBytes.length, contentType: 'text/html' }],
         });
-        store.putContent(indexCid, indexBytes);
-        store.putContent(bundleCid, bundleBytes);
+        await store.putContent(indexCid, indexBytes);
+        await store.putContent(bundleCid, bundleBytes);
 
         const res = await request(app).get(`/.well-known/rasl/${bundleCid}/missing.txt`);
         expect(res.status).toBe(404);
@@ -278,8 +278,8 @@ describe('RASL routes', () => {
             contentLanguage: 'fr',
           }],
         });
-        store.putContent(cid, bytes);
-        store.putContent(bundleCid, bundleBytes);
+        await store.putContent(cid, bytes);
+        await store.putContent(bundleCid, bundleBytes);
 
         const res = await request(app).get(`/.well-known/rasl/${bundleCid}/`);
         expect(res.status).toBe(200);
@@ -326,7 +326,7 @@ describe('RASL routes', () => {
     it('serves a static file via bundle MASL path resolution', async () => {
       const cssBytes = Buffer.from('body { color: red }');
       const cssCid = await computeDataCid(cssBytes);
-      const meta = staticStore.getContentMeta(cssCid);
+      const meta = await staticStore.getContentMeta(cssCid);
       const maslCid = meta?.masl_cid;
       expect(maslCid).toBeTruthy();
 
@@ -339,7 +339,7 @@ describe('RASL routes', () => {
     it('resolves index.html directory alias', async () => {
       const indexBytes = Buffer.from('<html>hello</html>');
       const indexCid = await computeDataCid(indexBytes);
-      const meta = staticStore.getContentMeta(indexCid);
+      const meta = await staticStore.getContentMeta(indexCid);
       const maslCid = meta?.masl_cid;
 
       // The '/' path should resolve to index.html via the directory alias.
@@ -352,11 +352,10 @@ describe('RASL routes', () => {
     it('does not copy static bytes into the blob store', async () => {
       const bytes = Buffer.from('body { color: red }');
       const cid = await computeDataCid(bytes);
-      // getContent reads from source_path, not the blob store.
-      const { existsSync } = await import('fs');
-      const blobPath = join(staticStore.dataDir, 'blobs',
-        cid.slice(-3, -1), cid);
-      expect(existsSync(blobPath)).toBe(false);
+      // Static files are registered with source_path set, not copied into the blob store.
+      const meta = await staticStore.getContentMeta(cid);
+      expect(meta.source_path).toBeTruthy();
+      expect(meta.source_path).toContain(staticDir);
     });
 
     it('GET /static-roots returns path and maslCid after indexing', async () => {
@@ -386,7 +385,7 @@ describe('RASL routes', () => {
 
     it('re-index with no file changes returns the same MASL CID', async () => {
       const cssCid = await computeDataCid(Buffer.from('body { color: red }'));
-      const maslCid1 = staticStore.getContentMeta(cssCid)?.masl_cid;
+      const maslCid1 = (await staticStore.getContentMeta(cssCid))?.masl_cid;
       const maslCid2 = await indexStaticRoot(staticDir, staticStore);
       expect(maslCid2).toBe(maslCid1);
     });
@@ -395,7 +394,7 @@ describe('RASL routes', () => {
       const { parseMasl } = await import('../../src/masl/document.js');
       writeFileSync(join(staticDir, 'style.css'), 'body { color: blue }');
       const maslCid2 = await indexStaticRoot(staticDir, staticStore);
-      const doc2 = parseMasl(staticStore.getContent(maslCid2).bytes);
+      const doc2 = parseMasl((await staticStore.getContent(maslCid2)).bytes);
       expect(doc2.prev?.$link).toBeTruthy();
     });
 
@@ -405,15 +404,15 @@ describe('RASL routes', () => {
       // Modify a file so a second MASL is generated, then check history pruning.
       writeFileSync(join(staticDir, 'style.css'), 'body { color: blue }');
       const maslCid2 = await indexStaticRoot(staticDir, staticStore, { maxHistory: 1 });
-      const prevCid = parseMasl(staticStore.getContent(maslCid2).bytes).prev?.$link;
+      const prevCid = parseMasl((await staticStore.getContent(maslCid2)).bytes).prev?.$link;
       expect(prevCid).toBeTruthy();
-      expect(staticStore.getContentMeta(prevCid).pinned).toBe(0); // unpinned
-      expect(staticStore.getContentMeta(maslCid2).pinned).toBe(1); // current stays pinned
+      expect((await staticStore.getContentMeta(prevCid)).pinned).toBe(0); // unpinned
+      expect((await staticStore.getContentMeta(maslCid2)).pinned).toBe(1); // current stays pinned
     });
 
     it('static content is excluded from pool capacity accounting', async () => {
-      const poolUsed = staticStore.getPoolUsed();
-      const pinnedUsed = staticStore.getPinnedUsed();
+      const poolUsed = await staticStore.getPoolUsed();
+      const pinnedUsed = await staticStore.getPinnedUsed();
       // The generated MASL is pinned, data CIDs (pinned=2) are not in either pool.
       expect(poolUsed).toBe(0);
       // MASL bytes count as pinned, but static data bytes do not.
@@ -453,7 +452,7 @@ describe('RASL routes', () => {
     it('no bundle MASL is stored in the store', async () => {
       const bytes = Buffer.from('hello blob');
       const cid = await computeDataCid(bytes);
-      const meta = blobStore.getContentMeta(cid);
+      const meta = await blobStore.getContentMeta(cid);
       expect(meta).toBeDefined();
       expect(meta.masl_cid).toBeNull();
       expect(meta.source_path).toContain('data.txt');
@@ -477,9 +476,9 @@ describe('RASL routes', () => {
     it('re-index with no changes does not rehash files', async () => {
       const bytes = Buffer.from('hello blob');
       const cid = await computeDataCid(bytes);
-      const metaBefore = blobStore.getContentMeta(cid);
+      const metaBefore = await blobStore.getContentMeta(cid);
       await indexStaticRoot(blobDir, blobStore, { generateMasl: false });
-      const metaAfter = blobStore.getContentMeta(cid);
+      const metaAfter = await blobStore.getContentMeta(cid);
       expect(metaAfter.source_mtime).toBe(metaBefore.source_mtime);
     });
   });
@@ -545,7 +544,7 @@ describe('RASL routes', () => {
     it('RASL retrieval paths are not intercepted by the mount-point router', async () => {
       const bytes = Buffer.from('<html>home</html>');
       const cid = await computeDataCid(bytes);
-      mpStore.putContent(cid, bytes);
+      await mpStore.putContent(cid, bytes);
 
       const res = await request(mpApp)
         .get(`/.well-known/rasl/${cid}`)
@@ -660,9 +659,9 @@ describe('RASL routes', () => {
           { path: '/style.css', cid: cssCid, size: cssBytes.length, contentType: 'text/css' },
         ],
       });
-      store.putContent(indexCid, indexBytes, { maslCid });
-      store.putContent(cssCid, cssBytes, { maslCid });
-      store.putContent(maslCid, cborBytes);
+      await store.putContent(indexCid, indexBytes, { maslCid });
+      await store.putContent(cssCid, cssBytes, { maslCid });
+      await store.putContent(maslCid, cborBytes);
       return { maslCid, indexBytes, cssBytes, indexCid };
     }
 
@@ -768,8 +767,8 @@ describe('RASL routes', () => {
       const { cborBytes, maslCid } = await createSingleMasl({
         name: 'hello.txt', type: 'text/plain', size: bytes.length, dataCid,
       });
-      runtimeStore.putContent(dataCid, bytes, { maslCid });
-      runtimeStore.putContent(maslCid, cborBytes);
+      await runtimeStore.putContent(dataCid, bytes, { maslCid });
+      await runtimeStore.putContent(maslCid, cborBytes);
 
       const res = await request(runtimeApp)
         .put('/mount-points/x.example.com')
@@ -792,7 +791,7 @@ describe('RASL routes', () => {
 
       // Simulate a restart by creating a new Store over the same DB.
       const { Store } = await import('../../src/storage/store.js');
-      const store2 = new Store(runtimeStore.db, runtimeStore.dataDir, 10 * 1024 * 1024);
+      const store2 = new Store(runtimeStore.db, runtimeStore.blobs, 10 * 1024 * 1024);
       const mp2 = store2.runtimeMountPoints.find(m => m.hostname === 'runtime.example.com' && m.prefix === '');
       expect(mp2?.maslCid).toBe(maslCid);
     });
@@ -926,8 +925,8 @@ describe('RASL routes', () => {
         name: 'Wildcard Site',
         resources: [{ path: '/', cid: indexCid, size: indexBytes.length, contentType: 'text/html' }],
       });
-      store.putContent(indexCid, indexBytes, { maslCid });
-      store.putContent(maslCid, cborBytes);
+      await store.putContent(indexCid, indexBytes, { maslCid });
+      await store.putContent(maslCid, cborBytes);
       return { maslCid, indexBytes, indexCid };
     }
 
@@ -1088,9 +1087,9 @@ describe('RASL routes', () => {
           { path: '/style.css', cid: cssCid, size: cssBytes.length, contentType: 'text/css' },
         ],
       });
-      store.putContent(indexCid, indexBytes, { maslCid });
-      store.putContent(cssCid, cssBytes, { maslCid });
-      store.putContent(maslCid, cborBytes);
+      await store.putContent(indexCid, indexBytes, { maslCid });
+      await store.putContent(cssCid, cssBytes, { maslCid });
+      await store.putContent(maslCid, cborBytes);
       return { maslCid, indexBytes, cssBytes };
     }
 
@@ -1205,7 +1204,7 @@ describe('RASL routes', () => {
         .send({ maslCid });
 
       const { Store } = await import('../../src/storage/store.js');
-      const store2 = new Store(runtimePrefixStore.db, runtimePrefixStore.dataDir, 10 * 1024 * 1024);
+      const store2 = new Store(runtimePrefixStore.db, runtimePrefixStore.blobs, 10 * 1024 * 1024);
       const mp = store2.runtimeMountPoints.find(m => m.hostname === 'mp.example.com' && m.prefix === '/app');
       expect(mp?.maslCid).toBe(maslCid);
     });
@@ -1217,7 +1216,7 @@ describe('RASL routes', () => {
     it('returns 200 for held CID with no body', async () => {
       const bytes = Buffer.from('head check');
       const cid = await computeDataCid(bytes);
-      store.putContent(cid, bytes);
+      await store.putContent(cid, bytes);
 
       const res = await request(app).head(`/.well-known/rasl/${cid}`);
       expect(res.status).toBe(200);

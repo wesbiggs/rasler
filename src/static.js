@@ -4,24 +4,16 @@ import micromatch from 'micromatch';
 import { computeDataCid } from './crypto/cid.js';
 import { createBundleMasl, parseMasl } from './masl/document.js';
 import { mimeType } from './util/mime.js';
-import {
-  dbPutStaticContent,
-  dbGetContentBySourcePath,
-  dbListStaticContent,
-  dbDeleteContent,
-} from './storage/db.js';
 
-// Walks the prev chain from prevMaslCid (depth 2 relative to the new MASL)
-// and unpins any entry whose depth exceeds maxHistory.
 function pruneHistory(store, prevMaslCid, maxHistory) {
   let cid = prevMaslCid;
-  let depth = 2; // new MASL is depth 1, its prev is depth 2
+  let depth = 2;
   while (cid) {
-    const entry = store.getContent(cid);
+    const entry = store.db.getContent(cid);
     if (!entry) break;
-    if (depth > maxHistory) store.setPinned(cid, false);
+    if (depth > maxHistory) store.db.setPinned(cid, false);
     try {
-      cid = parseMasl(entry.bytes).prev?.$link ?? null;
+      cid = parseMasl(store.blobs.get(cid, entry))?.prev?.$link ?? null;
     } catch { break; }
     depth++;
   }
@@ -39,19 +31,6 @@ async function* walkDir(dir, rootDir, ignore) {
   }
 }
 
-// Scans rootPath, registers each file's CID in the store's DB (with
-// source_path set), and — when generateMasl is true (the default) —
-// generates a bundle MASL for the root and returns its CID. Files are never
-// copied to the blob store. Symlinks that resolve outside the root are
-// silently skipped.
-//
-// When generateMasl is false, files are stored as plain blobs only (no MASL
-// document is created and null is returned). This is useful for roots that
-// exist purely to make a set of named blobs available by CID.
-//
-// On repeated calls, files whose size and mtime match the stored values are
-// not re-read or re-hashed. DB entries for files that no longer exist are
-// removed.
 export async function indexStaticRoot(rootPath, store, { maxHistory = null, ignore = [], generateMasl = true } = {}) {
   const realRoot = await realpath(rootPath);
   const fileInfos = [];
@@ -68,8 +47,7 @@ export async function indexStaticRoot(rootPath, store, { maxHistory = null, igno
     const { size, mtimeMs } = await stat(realFile);
     const mtime = Math.round(mtimeMs);
 
-    // Cache hit: size and mtime both match → file unchanged → reuse stored CID.
-    const existing = dbGetContentBySourcePath(store.db, realFile);
+    const existing = store.db.getContentBySourcePath(realFile);
     let cid;
     if (existing && existing.size === size && existing.source_mtime === mtime) {
       cid = existing.cid;
@@ -84,41 +62,36 @@ export async function indexStaticRoot(rootPath, store, { maxHistory = null, igno
     fileInfos.push({ realPath: realFile, relPath, cid, size, mtime, contentType });
   }
 
-  // Remove DB entries for files deleted since the last startup.
-  for (const entry of dbListStaticContent(store.db)) {
+  for (const entry of store.db.listStaticContent()) {
     if (entry.source_path?.startsWith(realRoot + sep) && !visitedPaths.has(entry.source_path)) {
       changed = true;
-      dbDeleteContent(store.db, entry.cid);
+      store.db.deleteContent(entry.cid);
     }
   }
 
   if (fileInfos.length === 0) return null;
 
   if (!generateMasl) {
-    // Nothing changed: files are already registered in the DB — no work needed.
     if (!changed) return null;
     const seen = new Set();
     for (const { cid, size, mtime, realPath } of fileInfos) {
       if (!seen.has(cid)) {
         seen.add(cid);
-        dbPutStaticContent(store.db, cid, { maslCid: null, size, sourcePath: realPath, sourceMtime: mtime });
+        store.db.putStaticContent(cid, { maslCid: null, size, sourcePath: realPath, sourceMtime: mtime });
       }
     }
     return null;
   }
 
-  // Find the existing MASL CID for this root (if any) to link as prev.
-  const prevEntry = dbListStaticContent(store.db)
+  const prevEntry = store.db.listStaticContent()
     .find(e => e.source_path?.startsWith(realRoot + sep));
   const prevMaslCid = prevEntry?.masl_cid ?? null;
 
-  // Nothing changed — reuse the existing MASL rather than generating a new one.
   if (!changed && prevMaslCid) {
     store.staticRootMasls.set(realRoot, prevMaslCid);
     return prevMaslCid;
   }
 
-  // Sort for deterministic MASL CIDs across restarts.
   fileInfos.sort((a, b) => a.relPath.localeCompare(b.relPath));
 
   const resources = [];
@@ -133,7 +106,8 @@ export async function indexStaticRoot(rootPath, store, { maxHistory = null, igno
   const name = basename(realRoot);
   const { cborBytes, maslCid } = await createBundleMasl({ name, resources, prevMaslCid });
 
-  store.putContent(maslCid, Buffer.from(cborBytes), { pinned: true });
+  store.db.putContent(maslCid, { maslCid: null, size: cborBytes.length, pinned: true, lastRequested: null });
+  store.blobs.put(maslCid, Buffer.from(cborBytes));
   store.staticRootMasls.set(realRoot, maslCid);
 
   if (maxHistory != null && prevMaslCid) pruneHistory(store, prevMaslCid, maxHistory);
@@ -142,7 +116,7 @@ export async function indexStaticRoot(rootPath, store, { maxHistory = null, igno
   for (const { cid, size, mtime, realPath } of fileInfos) {
     if (!seen.has(cid)) {
       seen.add(cid);
-      dbPutStaticContent(store.db, cid, { maslCid, size, sourcePath: realPath, sourceMtime: mtime });
+      store.db.putStaticContent(cid, { maslCid, size, sourcePath: realPath, sourceMtime: mtime });
     }
   }
 

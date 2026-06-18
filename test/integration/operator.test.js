@@ -106,15 +106,13 @@ describe('Operator API routes', () => {
       it('stores content unpinned', async () => {
         const res = await uploadFile(app, apiSecret, Buffer.from('unpinned'), 'f.txt', 'text/plain');
         const { maslCid } = res.body.uploads[0];
-        expect(store.hasContent(maslCid)).toBe(true);
-        expect(store.getContent(maslCid).meta.pinned).toBe(0);
+        expect(await store.hasContent(maslCid)).toBe(true);
+        expect((await store.getContent(maslCid)).meta.pinned).toBe(0);
       });
 
       it('uses upload filename in the MASL content-disposition', async () => {
         const res = await uploadFile(app, apiSecret, Buffer.from('hi'), 'page.html', 'text/html');
         const { maslCid } = res.body.uploads[0];
-        // Path-bearing form (trailing slash) resolves the MASL single-mode document
-        // and returns the src resource with MASL-derived headers.
         const raslRes = await request(app).get(`/.well-known/rasl/${maslCid}/`);
         expect(raslRes.status).toBe(200);
         expect(raslRes.headers['content-disposition']).toContain('page.html');
@@ -150,8 +148,8 @@ describe('Operator API routes', () => {
         const res = await uploadCar(app, apiSecret, car);
         expect(res.status).toBe(200);
         expect(res.body.uploads[0].maslCid).toBe(maslCid);
-        expect(store.getContent(maslCid).meta.pinned).toBe(0);
-        expect(store.getContent(dataCid).meta.pinned).toBe(0);
+        expect((await store.getContent(maslCid)).meta.pinned).toBe(0);
+        expect((await store.getContent(dataCid)).meta.pinned).toBe(0);
       });
 
       it('links data CIDs to the MASL CID', async () => {
@@ -162,7 +160,7 @@ describe('Operator API routes', () => {
         });
         const car = await buildCar(maslCid, [[maslCid, Buffer.from(cborBytes)], [dataCid, data]]);
         await uploadCar(app, apiSecret, car);
-        expect(store.getContent(dataCid).meta.masl_cid).toBe(maslCid);
+        expect((await store.getContent(dataCid)).meta.masl_cid).toBe(maslCid);
       });
 
       it('accepts a bundle MASL CAR with multiple resources', async () => {
@@ -183,8 +181,8 @@ describe('Operator API routes', () => {
 
         const res = await uploadCar(app, apiSecret, car, 'site.car');
         expect(res.status).toBe(200);
-        expect(store.hasContent(idxCid)).toBe(true);
-        expect(store.hasContent(cssCid)).toBe(true);
+        expect(await store.hasContent(idxCid)).toBe(true);
+        expect(await store.hasContent(cssCid)).toBe(true);
       });
 
       it('detects CAR by .car filename extension too', async () => {
@@ -269,31 +267,31 @@ describe('Operator API routes', () => {
 
       expect(pinRes.status).toBe(200);
       expect(pinRes.body.pinned).toContain(maslCid);
-      expect(store.getContent(maslCid).meta.pinned).toBe(1);
+      expect((await store.getContent(maslCid)).meta.pinned).toBe(1);
 
       // The data CID linked from the MASL should also be pinned.
-      const dataRow = store.listContent().find(r => r.masl_cid === maslCid && r.cid !== maslCid);
+      const dataRow = (await store.listContent()).find(r => r.masl_cid === maslCid && r.cid !== maslCid);
       expect(dataRow).toBeDefined();
-      expect(store.getContent(dataRow.cid).meta.pinned).toBe(1);
+      expect((await store.getContent(dataRow.cid)).meta.pinned).toBe(1);
     });
 
     it('pinning a data CID also pins its MASL', async () => {
       const uploadRes = await uploadFile(app, apiSecret, Buffer.from('data pin'), 'd.txt', 'text/plain');
       const { maslCid } = uploadRes.body.uploads[0];
-      const dataRow = store.listContent().find(r => r.masl_cid === maslCid && r.cid !== maslCid);
+      const dataRow = (await store.listContent()).find(r => r.masl_cid === maslCid && r.cid !== maslCid);
 
       await request(app)
         .post('/pin')
         .set(OPERATOR_SECRET_HEADER, apiSecret)
         .send({ cids: [dataRow.cid] });
 
-      expect(store.getContent(maslCid).meta.pinned).toBe(1);
+      expect((await store.getContent(maslCid)).meta.pinned).toBe(1);
     });
 
     it('content is not pinned by upload alone', async () => {
       const uploadRes = await uploadFile(app, apiSecret, Buffer.from('no pin'), 'n.txt', 'text/plain');
       const { maslCid } = uploadRes.body.uploads[0];
-      expect(store.getContent(maslCid).meta.pinned).toBe(0);
+      expect((await store.getContent(maslCid)).meta.pinned).toBe(0);
     });
 
     it('returns 404 for a CID not in the store', async () => {
@@ -414,21 +412,21 @@ describe('Operator API routes', () => {
   describe('DELETE /pin/:cid', () => {
     it('unpins a MASL CID and its linked data CID', async () => {
       const maslCid = await uploadAndPin(app, apiSecret, Buffer.from('to unpin'), 'u.txt');
-      const dataRow = store.listContent().find(r => r.masl_cid === maslCid && r.cid !== maslCid);
+      const dataRow = (await store.listContent()).find(r => r.masl_cid === maslCid && r.cid !== maslCid);
 
       await request(app).delete(`/pin/${maslCid}`).set(OPERATOR_SECRET_HEADER, apiSecret);
 
-      expect(store.getContent(maslCid).meta.pinned).toBe(0);
-      expect(store.getContent(dataRow.cid).meta.pinned).toBe(0);
+      expect((await store.getContent(maslCid)).meta.pinned).toBe(0);
+      expect((await store.getContent(dataRow.cid)).meta.pinned).toBe(0);
     });
 
     it('unpins via data CID and clears MASL pin too', async () => {
       const maslCid = await uploadAndPin(app, apiSecret, Buffer.from('unpin via data'), 'v.txt');
-      const dataRow = store.listContent().find(r => r.masl_cid === maslCid && r.cid !== maslCid);
+      const dataRow = (await store.listContent()).find(r => r.masl_cid === maslCid && r.cid !== maslCid);
 
       await request(app).delete(`/pin/${dataRow.cid}`).set(OPERATOR_SECRET_HEADER, apiSecret);
 
-      expect(store.getContent(maslCid).meta.pinned).toBe(0);
+      expect((await store.getContent(maslCid)).meta.pinned).toBe(0);
     });
 
     it('returns 200 for nonexistent CID', async () => {
@@ -477,12 +475,12 @@ describe('DELETE /content/:cid', () => {
   it('removes a held data CID', async () => {
     const data = Buffer.from('to delete');
     const dataCid = await computeDataCid(data);
-    store.putContent(dataCid, data);
+    await store.putContent(dataCid, data);
 
     const r = await request(app).delete(`/content/${dataCid}`).set(OPERATOR_SECRET_HEADER, apiSecret);
     expect(r.status).toBe(200);
     expect(r.body.deleted).toContain(dataCid);
-    expect(store.hasContent(dataCid)).toBe(false);
+    expect(await store.hasContent(dataCid)).toBe(false);
   });
 
   it('removes a MASL CID and its linked data CID', async () => {
@@ -491,14 +489,14 @@ describe('DELETE /content/:cid', () => {
       .set(OPERATOR_SECRET_HEADER, apiSecret)
       .attach('files', Buffer.from('masl del'), { filename: 'm.txt', contentType: 'text/plain' });
     const { maslCid } = res.body.uploads[0];
-    const dataRow = store.listContent().find(r => r.masl_cid === maslCid);
+    const dataRow = (await store.listContent()).find(r => r.masl_cid === maslCid);
 
     const r = await request(app).delete(`/content/${maslCid}`).set(OPERATOR_SECRET_HEADER, apiSecret);
     expect(r.status).toBe(200);
     expect(r.body.deleted).toContain(maslCid);
     expect(r.body.deleted).toContain(dataRow.cid);
-    expect(store.hasContent(maslCid)).toBe(false);
-    expect(store.hasContent(dataRow.cid)).toBe(false);
+    expect(await store.hasContent(maslCid)).toBe(false);
+    expect(await store.hasContent(dataRow.cid)).toBe(false);
   });
 
   it('returns 404 for an unknown CID', async () => {
@@ -517,7 +515,7 @@ describe('DELETE /content/:cid', () => {
 
     const r = await request(app).delete(`/content/${maslCid}`).set(OPERATOR_SECRET_HEADER, apiSecret);
     expect(r.status).toBe(200);
-    expect(store.hasContent(maslCid)).toBe(false);
+    expect(await store.hasContent(maslCid)).toBe(false);
   });
 });
 
@@ -630,7 +628,7 @@ describe('Operator API path prefix', () => {
     const cid = await computeDataCid(bytes);
     const { app, store, cleanup } = makeBaseTestApp({ operatorApiPathPrefix: '/admin' });
     try {
-      store.putContent(cid, bytes);
+      await store.putContent(cid, bytes);
       const res = await request(app).get(`/.well-known/rasl/${cid}`);
       expect(res.status).toBe(200);
     } finally { cleanup(); }

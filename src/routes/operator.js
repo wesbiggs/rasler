@@ -1,14 +1,16 @@
 import { Router, json as expressJson } from 'express';
 import multer from 'multer';
-import { CarReader } from '@ipld/car';
-import { base32 } from 'multiformats/bases/base32';
-import * as dagCbor from '@ipld/dag-cbor';
-import { computeDataCid, computeMaslCid, isMaslCid } from '../crypto/cid.js';
-import { createSingleMasl, parseMasl, maslLinkedCids, maslIsBundle } from '../masl/document.js';
 import { realpathSync } from 'fs';
 import { requireApiSecret } from '../middleware/auth.js';
 import { makeOperatorCors } from '../middleware/cors.js';
 import { normalizeMountPath } from '../util/normalizeMountPath.js';
+import {
+  handleUpload, handlePin, handleUnpin,
+  handleListContent, handleGetContent, handleDeleteContent,
+  handleGetStatus,
+} from '../handlers/operator.js';
+import { isMaslCid } from '../crypto/cid.js';
+import { parseMasl, maslIsBundle } from '../masl/document.js';
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -49,62 +51,6 @@ const upload = multer({ storage: multer.memoryStorage() });
  *           type: string
  */
 
-function isCarFile(file) {
-  return (
-    file.mimetype === 'application/vnd.ipld.car' ||
-    file.mimetype === 'application/car' ||
-    file.originalname?.toLowerCase().endsWith('.car')
-  );
-}
-
-// Extract, verify, and return all blocks from a CAR file.
-// Returns { maslCid, blocks: Map<cidStr, Uint8Array> } or throws with { status, error, ...extra }.
-async function readCar(fileBuffer) {
-  let reader;
-  try {
-    reader = await CarReader.fromBytes(fileBuffer);
-  } catch {
-    throw { status: 400, error: 'Invalid CAR file' };
-  }
-
-  const blocks = new Map();
-  try {
-    for await (const { cid, bytes } of reader.blocks()) {
-      const cidStr = cid.toString(base32);
-      const isMasl = cid.code === dagCbor.code;
-      const actual = isMasl ? await computeMaslCid(bytes) : await computeDataCid(bytes);
-      if (actual !== cidStr) throw { status: 400, error: `CID mismatch for block ${cidStr}` };
-      blocks.set(cidStr, bytes);
-    }
-  } catch (err) {
-    if (err.status) throw err;
-    throw { status: 400, error: `Failed to read CAR blocks: ${err.message}` };
-  }
-
-  const roots = await reader.getRoots();
-  const maslRoot = roots.find(cid => cid.code === dagCbor.code);
-  if (!maslRoot) throw { status: 400, error: 'CAR root must be a MASL CID (dag-cbor codec)' };
-
-  const maslCid = maslRoot.toString(base32);
-  if (!blocks.has(maslCid)) throw { status: 400, error: 'MASL root block is missing from the CAR' };
-
-  let doc;
-  try { doc = parseMasl(blocks.get(maslCid)); } catch {
-    throw { status: 400, error: 'Failed to parse MASL document' };
-  }
-
-  const links = maslLinkedCids(doc);
-  const missing = links.filter(l => !blocks.has(l.cid)).map(l => l.cid);
-  if (missing.length > 0) throw { status: 400, error: 'CAR is missing linked data CIDs', missing };
-
-  return { maslCid, blocks, links };
-}
-
-// Base operator router: content management and node status (base fields).
-// Auth and CORS are applied here, which also protects any operator extension router
-// routes — Express runs router.use middleware for all requests entering the router
-// even when no route matches, so auth is enforced before the request falls through
-// to the overlay extension.
 export function makeOperatorRouter({ store, selfOrigin, apiSecret, corsOrigins = [], staticRoots = [], mountPoints = [] }) {
   const router = Router();
   if (corsOrigins.length > 0) router.use(makeOperatorCors(corsOrigins));
@@ -163,71 +109,13 @@ export function makeOperatorRouter({ store, selfOrigin, apiSecret, corsOrigins =
    *               $ref: '#/components/schemas/Error'
    */
   router.post('/upload', upload.array('files'), async (req, res) => {
-    const files = req.files;
-    if (!files || files.length === 0) {
-      return res.status(400).json({ error: 'No files provided' });
-    }
-
-    const uploads = [];
-
-    for (const file of files) {
-      if (isCarFile(file)) {
-        let parsed;
-        try {
-          parsed = await readCar(file.buffer);
-        } catch (err) {
-          return res.status(err.status ?? 400).json(
-            err.missing ? { error: err.error, missing: err.missing } : { error: err.error }
-          );
-        }
-
-        const { maslCid, blocks, links } = parsed;
-        const totalBytes = [...blocks.values()].reduce((n, b) => n + b.length, 0);
-        if (store.getPoolAvailable() < totalBytes) {
-          if (!store.evictIfNeeded(totalBytes)) {
-            return res.status(507).json({ error: 'Insufficient storage' });
-          }
-        }
-
-        store.putContent(maslCid, blocks.get(maslCid));
-        for (const link of links) {
-          store.putContent(link.cid, blocks.get(link.cid), { maslCid });
-        }
-        uploads.push({ filename: file.originalname, maslCid });
-
-      } else {
-        const bytes = file.buffer;
-        const name = file.originalname ?? 'upload';
-        const type = file.mimetype ?? 'application/octet-stream';
-        const size = bytes.length;
-
-        let dataCid;
-        try { dataCid = await computeDataCid(bytes); } catch {
-          return res.status(500).json({ error: `CID computation failed for ${name}` });
-        }
-
-        let maslResult;
-        try {
-          maslResult = await createSingleMasl({ name, type, size, dataCid });
-        } catch {
-          return res.status(500).json({ error: `MASL creation failed for ${name}` });
-        }
-
-        const { cborBytes, maslCid } = maslResult;
-        const totalBytes = bytes.length + cborBytes.length;
-        if (store.getPoolAvailable() < totalBytes) {
-          if (!store.evictIfNeeded(totalBytes)) {
-            return res.status(507).json({ error: 'Insufficient storage' });
-          }
-        }
-
-        store.putContent(dataCid, bytes, { maslCid });
-        store.putContent(maslCid, cborBytes);
-        uploads.push({ filename: name, maslCid });
-      }
-    }
-
-    return res.status(200).json({ uploads });
+    const files = (req.files ?? []).map(f => ({
+      name: f.originalname,
+      type: f.mimetype,
+      bytes: f.buffer,
+    }));
+    const result = await handleUpload(store, files);
+    return res.status(result.status).json(result.body);
   });
 
   /**
@@ -280,36 +168,10 @@ export function makeOperatorRouter({ store, selfOrigin, apiSecret, corsOrigins =
    *             schema:
    *               $ref: '#/components/schemas/Error'
    */
-  router.post('/pin', (req, res) => {
+  router.post('/pin', async (req, res) => {
     const { cids } = req.body ?? {};
-    if (!Array.isArray(cids) || cids.length === 0) {
-      return res.status(400).json({ error: 'cids must be a non-empty array' });
-    }
-
-    const pinned = new Set();
-
-    for (const cid of cids) {
-      const entry = store.getContent(cid);
-      if (!entry) return res.status(404).json({ error: `CID not found: ${cid}` });
-
-      store.setPinned(cid, true);
-      pinned.add(cid);
-
-      const maslCid = entry.meta.masl_cid;
-      if (maslCid && store.hasContent(maslCid)) {
-        store.setPinned(maslCid, true);
-        pinned.add(maslCid);
-      }
-
-      for (const row of store.listContent()) {
-        if (row.masl_cid === cid) {
-          store.setPinned(row.cid, true);
-          pinned.add(row.cid);
-        }
-      }
-    }
-
-    return res.status(200).json({ pinned: [...pinned] });
+    const result = await handlePin(store, cids);
+    return res.status(result.status).json(result.body);
   });
 
   /**
@@ -343,23 +205,9 @@ export function makeOperatorRouter({ store, selfOrigin, apiSecret, corsOrigins =
    *       '401':
    *         description: Missing or invalid operator secret
    */
-  router.delete('/pin/:cid', (req, res) => {
-    const { cid } = req.params;
-    const meta = store.getContent(cid)?.meta;
-
-    if (!meta) return res.status(200).json({ status: 'not found' });
-
-    store.setPinned(cid, false);
-
-    if (meta.masl_cid && store.hasContent(meta.masl_cid)) {
-      store.setPinned(meta.masl_cid, false);
-    }
-
-    for (const row of store.listContent()) {
-      if (row.masl_cid === cid) store.setPinned(row.cid, false);
-    }
-
-    return res.status(200).json({ status: 'ok' });
+  router.delete('/pin/:cid', async (req, res) => {
+    const result = await handleUnpin(store, req.params.cid);
+    return res.status(result.status).json(result.body);
   });
 
   /**
@@ -405,25 +253,11 @@ export function makeOperatorRouter({ store, selfOrigin, apiSecret, corsOrigins =
    *       '401':
    *         description: Missing or invalid operator secret
    */
-  router.get('/content', (req, res) => {
+  router.get('/content', async (req, res) => {
     const limit = Math.min(200, Math.max(1, parseInt(req.query.limit ?? '50', 10) || 50));
     const cursor = req.query.cursor ?? null;
-
-    const items = store.listContentPage(limit, cursor);
-    const total = store.countContent();
-    const nextCursor = items.length === limit ? items[items.length - 1].cid : null;
-
-    return res.status(200).json({
-      total,
-      items: items.map(row => ({
-        cid: row.cid,
-        maslCid: row.masl_cid ?? null,
-        size: row.size,
-        pinned: row.pinned === 1,
-        lastRequested: row.last_requested ?? null,
-      })),
-      nextCursor,
-    });
+    const result = await handleListContent(store, limit, cursor);
+    return res.status(result.status).json(result.body);
   });
 
   /**
@@ -487,45 +321,14 @@ export function makeOperatorRouter({ store, selfOrigin, apiSecret, corsOrigins =
    *             schema:
    *               $ref: '#/components/schemas/Error'
    */
-  router.get('/content/:cid', (req, res) => {
-    const { cid } = req.params;
-    const meta = store.getContentMeta(cid);
-    if (!meta) return res.status(404).json({ error: 'CID not found' });
-    return res.status(200).json({
-      cid: meta.cid,
-      maslCid: meta.masl_cid ?? null,
-      size: meta.size,
-      pinned: meta.pinned === 1,
-      lastRequested: meta.last_requested ?? null,
-    });
+  router.get('/content/:cid', async (req, res) => {
+    const result = await handleGetContent(store, req.params.cid);
+    return res.status(result.status).json(result.body);
   });
 
-  router.delete('/content/:cid', (req, res) => {
-    const { cid } = req.params;
-    const entry = store.getContent(cid);
-    if (!entry) return res.status(404).json({ error: 'CID not found' });
-
-    const deleted = [];
-
-    if (isMaslCid(cid)) {
-      let linkedCids = [];
-      try {
-        linkedCids = maslLinkedCids(parseMasl(entry.bytes)).map(l => l.cid);
-      } catch {
-        // Unparseable MASL — fall through and delete just the MASL itself
-      }
-      for (const linkedCid of linkedCids) {
-        if (store.hasContent(linkedCid)) {
-          store.deleteContent(linkedCid);
-          deleted.push(linkedCid);
-        }
-      }
-    }
-
-    store.deleteContent(cid);
-    deleted.push(cid);
-
-    return res.status(200).json({ deleted });
+  router.delete('/content/:cid', async (req, res) => {
+    const result = await handleDeleteContent(store, req.params.cid);
+    return res.status(result.status).json(result.body);
   });
 
   /**
@@ -618,14 +421,12 @@ export function makeOperatorRouter({ store, selfOrigin, apiSecret, corsOrigins =
     const result = [];
     const seen = new Set();
 
-    // Runtime entries first (they take serving priority).
     for (const mp of store.runtimeMountPoints) {
       const key = `${mp.hostname}|${mp.prefix}`;
       seen.add(key);
       result.push({ hostname: mp.hostname || null, mountPath: mp.prefix || '/', path: null, maslCid: mp.maslCid, source: 'runtime' });
     }
 
-    // Config-backed entries not overridden by a runtime mapping at the same (hostname, prefix).
     for (const mp of mountPoints) {
       const key = `${mp.hostname}|${mp.prefix}`;
       if (seen.has(key)) continue;
@@ -831,7 +632,7 @@ export function makeOperatorRouter({ store, selfOrigin, apiSecret, corsOrigins =
     return normalizeMountPath(req.path.slice('/mount-points/'.length + hostname.length) || '/');
   }
 
-  function handleMountPointPut(req, res) {
+  async function handleMountPointPut(req, res) {
     const { hostname: hostnameParam } = req.params;
     const hostname = hostnameParam === '-' ? '' : hostnameParam;
     const prefix = getMountPrefix(req);
@@ -842,10 +643,8 @@ export function makeOperatorRouter({ store, selfOrigin, apiSecret, corsOrigins =
     if (!isMaslCid(maslCid)) {
       return res.status(400).json({ error: 'maslCid must be a dag-cbor CID' });
     }
-    const entry = store.getContent(maslCid);
-    if (!entry) {
-      return res.status(404).json({ error: 'CID not held locally' });
-    }
+    const entry = await store.getContent(maslCid);
+    if (!entry) return res.status(404).json({ error: 'CID not held locally' });
     let doc;
     try { doc = parseMasl(entry.bytes); } catch {
       return res.status(400).json({ error: 'Failed to parse MASL document' });
@@ -853,12 +652,12 @@ export function makeOperatorRouter({ store, selfOrigin, apiSecret, corsOrigins =
     if (!maslIsBundle(doc)) {
       return res.status(400).json({ error: 'maslCid must refer to a bundle MASL' });
     }
-    store.setPinned(maslCid, true);
-    store.setMountPoint(hostname, prefix, maslCid);
+    await store.setPinned(maslCid, true);
+    await store.setMountPoint(hostname, prefix, maslCid);
     return res.status(200).json({ hostname: hostname || null, mountPath: prefix || '/', maslCid });
   }
 
-  function handleMountPointDelete(req, res) {
+  async function handleMountPointDelete(req, res) {
     const { hostname: hostnameParam } = req.params;
     const hostname = hostnameParam === '-' ? '' : hostnameParam;
     const prefix = getMountPrefix(req);
@@ -866,7 +665,7 @@ export function makeOperatorRouter({ store, selfOrigin, apiSecret, corsOrigins =
     if (!exists) {
       return res.status(404).json({ error: 'Runtime virtual host mapping not found' });
     }
-    store.deleteMountPoint(hostname, prefix);
+    await store.deleteMountPoint(hostname, prefix);
     return res.status(200).json({ status: 'ok' });
   }
 
@@ -918,25 +717,14 @@ export function makeOperatorRouter({ store, selfOrigin, apiSecret, corsOrigins =
    *       '401':
    *         description: Missing or invalid operator secret
    */
-  // Base /status: writes local fields and falls through to overlay/terminator.
-  router.get('/status', (req, res, next) => {
-    res.locals.status = {
-      origin: selfOrigin,
-      storage: {
-        totalCapacity: store.totalCapacity,
-        poolUsed: store.getPoolUsed(),
-        poolAvailable: store.getPoolAvailable(),
-        pinnedUsed: store.getPinnedUsed(),
-        pinnedCount: store.countPinned(),
-      },
-    };
+  router.get('/status', async (req, res, next) => {
+    res.locals.status = await handleGetStatus(store, selfOrigin);
     next();
   });
 
   return router;
 }
 
-// Terminator: sends the /status response assembled by base and overlay handlers.
 export function makeOperatorStatusTerminator() {
   const router = Router();
   router.get('/status', (req, res) => res.status(200).json(res.locals.status));
