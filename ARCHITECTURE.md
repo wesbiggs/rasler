@@ -22,10 +22,16 @@ src/
     mountPoints.js      Mount-point router: maps Host: header + path prefix to a bundle MASL
     operator.js         Operator API router: upload, pin, content management, mount points, status
 
+  handlers/
+    operator.js         Pure async handler functions for operator API routes
+    rasl.js             Pure async handler functions for RASL retrieval routes
+
   storage/
     store.js            Store class: unified content access layer
     db.js               SQLite helpers (node:sqlite, no ORM)
     files.js            Blob filesystem helpers (sharded directory layout)
+    local-db.js         LocalDb adapter: wraps db.js functions into the interface expected by Store
+    local-blobs.js      LocalBlobs adapter: wraps files.js functions into the interface expected by Store
 
   masl/
     document.js         MASL encode/decode, path resolution, link extraction
@@ -110,7 +116,7 @@ Content has three pin states stored in `content.pinned`:
 | `1` | Pinned — held indefinitely, counts against pinned capacity |
 | `2` | Static — filesystem-backed, never evicted, not counted against any capacity limit |
 
-`evictIfNeeded(requiredBytes)` is called before each upload. The eviction policy is injected into the `Store` constructor (default: oldest unpinned by `last_requested`), making it replaceable for multi-node deployments.
+`evictIfNeeded(requiredBytes)` is called before each upload. The eviction policy is embedded in the db adapter's `findEvictionCandidate` method (the local adapter picks the oldest unpinned entry by `last_requested`). Providing a custom db adapter allows a different eviction strategy — useful for multi-node deployments.
 
 ### SQLite schema
 
@@ -176,17 +182,21 @@ Key config fields:
 
 `server.js` exports two factories:
 
-- **`createApp({ store, config })`** — creates a new Express app with `trust proxy: 1` and mounts all RASLer middleware. For standalone deployments.
-- **`addRaslerMiddleware(app, { store, config })`** — mounts RASLer onto an existing Express app without touching `trust proxy`. For embedding RASLer into a larger service.
+- **`createApp({ store, config, openApiOverlays? })`** — creates a new Express app with `trust proxy: 1` and mounts all RASLer middleware. For standalone deployments.
+- **`addRaslerMiddleware(app, { store, config, openApiOverlays? })`** — mounts RASLer onto an existing Express app without touching `trust proxy`. For embedding RASLer into a larger service.
 
-Both expect the caller to then mount the operator router and call `finalizeApp()`.
+`openApiOverlays` is an optional array of file paths to OpenAPI overlay JSON specs that are merged into the base `openapi.json` before Swagger UI is set up. Useful for adding custom endpoints to the API docs.
 
-The operator router (`makeOperatorRouter`) and RASL router (`makeRaslRouter`) are also exported individually for fine-grained composition. The `/status` endpoint uses a two-part design: `makeOperatorRouter` writes base fields to `res.locals.status` and calls `next()`; `makeOperatorStatusTerminator` (or an overlay router) sends the final response. This lets an embedding application add extra fields to `/status` without forking the base router.
+Both expect the caller to add `makeRaslNotFoundHandler()`, mount the operator router, and call `finalizeApp()`.
+
+The operator router (`makeOperatorRouter`) and RASL router (`makeRaslRouter`) are also exported individually for fine-grained composition. `makeOperatorRouter` accepts `{ store, selfOrigin, apiSecret, corsOrigins?, staticRoots?, mountPoints? }`. The `/status` endpoint uses a two-part design: `makeOperatorRouter` writes base fields to `res.locals.status` and calls `next()`; `makeOperatorStatusTerminator` (or an overlay router) sends the final response. This lets an embedding application add extra fields to `/status` without forking the base router.
 
 ### Standalone
 
 ```js
 import { openDb } from 'rasler/src/storage/db.js';
+import { makeLocalDb } from 'rasler/src/storage/local-db.js';
+import { makeLocalBlobs } from 'rasler/src/storage/local-blobs.js';
 import { Store } from 'rasler/src/storage/store.js';
 import { createApp, finalizeApp } from 'rasler/src/server.js';
 import { makeRaslNotFoundHandler } from 'rasler/src/routes/rasl.js';
@@ -195,8 +205,10 @@ import { indexStaticRoots } from 'rasler/src/static.js';
 
 const staticRoots = [{ directory: '/var/www/html', watch: false, ignore: [] }];
 
-const db = openDb('./data');
-const store = new Store(db, './data', 1024 * 1024 * 1024, { staticRoots });
+const rawDb = openDb('./data');
+const db = makeLocalDb(rawDb);
+const blobs = makeLocalBlobs('./data');
+const store = new Store(db, blobs, 1024 * 1024 * 1024, { staticRoots });
 
 const config = {
   origin: 'https://mynode.example.com',
@@ -212,12 +224,21 @@ const config = {
 };
 
 if (config.staticRoots.length > 0) {
-  indexStaticRoots(config.staticRoots, store, { maxHistory: config.staticMaxHistory });
+  await indexStaticRoots(config.staticRoots, store, { maxHistory: config.staticMaxHistory });
 }
 
 const app = createApp({ store, config });
+const prefix = config.operatorApiPathPrefix || '/';
+
 app.use(makeRaslNotFoundHandler());
-app.use(makeOperatorRouter({ store, selfOrigin: config.origin, apiSecret: config.apiSecret }));
+app.use(prefix, makeOperatorRouter({
+  store,
+  selfOrigin: config.origin,
+  apiSecret: config.apiSecret,
+  corsOrigins: config.operatorCorsOrigins,
+  staticRoots: config.staticRoots,
+  mountPoints: [],
+}));
 finalizeApp(app, config);
 
 app.listen(config.port);
@@ -234,8 +255,16 @@ import { makeOperatorRouter } from 'rasler/src/routes/operator.js';
 
 // your existing app
 addRaslerMiddleware(app, { store, config });
+const prefix = config.operatorApiPathPrefix || '/';
 app.use(makeRaslNotFoundHandler());
-app.use(makeOperatorRouter({ store, selfOrigin: config.origin, apiSecret: config.apiSecret }));
+app.use(prefix, makeOperatorRouter({
+  store,
+  selfOrigin: config.origin,
+  apiSecret: config.apiSecret,
+  corsOrigins: config.operatorCorsOrigins ?? [],
+  staticRoots: config.staticRoots ?? [],
+  mountPoints: config.mountPoints ?? [],
+}));
 finalizeApp(app, config);
 ```
 
