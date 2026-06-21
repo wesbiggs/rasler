@@ -1,4 +1,4 @@
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect } from 'vitest';
 import { computeDataCid, computeMaslCid, getRingPosition, cidToUnencodedDigest } from '../../src/crypto/cid.js';
 
 describe('computeDataCid', () => {

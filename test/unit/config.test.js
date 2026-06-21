@@ -1,4 +1,4 @@
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect } from 'vitest';
 import { resolve } from 'path';
 import { parseSize } from '../../src/util/parseSize.js';
 import { normalizeMountPath } from '../../src/util/normalizeMountPath.js';

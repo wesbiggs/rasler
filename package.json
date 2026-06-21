@@ -46,9 +46,9 @@
   "scripts": {
     "start": "node src/index.js",
     "lint": "eslint src/ scripts/ test/",
-    "test": "npm run lint && NODE_OPTIONS=--experimental-vm-modules jest --runInBand",
-    "test:unit": "NODE_OPTIONS=--experimental-vm-modules jest test/unit --runInBand",
-    "test:integration": "NODE_OPTIONS=--experimental-vm-modules jest test/integration --runInBand",
+    "test": "npm run lint && vitest run",
+    "test:unit": "vitest run test/unit",
+    "test:integration": "vitest run test/integration",
     "generate:openapi": "node scripts/generate-openapi.js",
     "generate:docs": "node scripts/generate-docs.js",
     "get-in-the-car": "node scripts/get-in-the-car.js"
@@ -64,21 +64,12 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
-    "@jest/globals": "30.4.1",
-    "eslint": "10.4.1",
+    "eslint": "10.5.0",
     "globals": "17.6.0",
-    "jest": "30.4.2",
-    "marked": "18.0.4",
+    "marked": "18.0.5",
     "supertest": "7.2.2",
-    "swagger-jsdoc": "6.3.0"
-  },
-  "jest": {
-    "transform": {},
-    "testEnvironment": "node",
-    "forceExit": true,
-    "testMatch": [
-      "<rootDir>/test/**/*.test.js"
-    ]
+    "swagger-jsdoc": "6.3.0",
+    "vitest": "4.1.9"
   },
   "engines": {
     "node": ">=23.4.0"
