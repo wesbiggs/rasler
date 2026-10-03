@@ -73,5 +73,9 @@
   },
   "engines": {
     "node": ">=23.4.0"
+  },
+  "allowScripts": {
+    "@scarf/scarf@1.4.0": true,
+    "fsevents@2.3.3": true
   }
 }
