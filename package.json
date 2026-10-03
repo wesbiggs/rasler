@@ -57,7 +57,6 @@
     "@ipld/car": "5.4.6",
     "@ipld/dag-cbor": "10.0.1",
     "express": "5.2.1",
-    "micromatch": "4.0.8",
     "multer": "2.4.0",
     "multiformats": "14.0.0",
     "swagger-ui-express": "5.0.1"
@@ -73,5 +72,9 @@
   },
   "engines": {
     "node": ">=23.4.0"
+  },
+  "allowScripts": {
+    "@scarf/scarf@1.4.0": true,
+    "fsevents@2.3.3": true
   }
 }

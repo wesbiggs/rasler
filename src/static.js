@@ -1,6 +1,5 @@
 import { readFile, readdir, realpath, stat } from 'node:fs/promises';
-import { join, relative, basename, dirname, sep } from 'node:path';
-import micromatch from 'micromatch';
+import { join, relative, basename, dirname, sep, posix } from 'node:path';
 import { computeDataCid } from './crypto/cid.js';
 import { createBundleMasl, parseMasl } from './masl/document.js';
 import { mimeType } from './util/mime.js';
@@ -24,7 +23,7 @@ async function* walkDir(dir, rootDir, ignore) {
     const full = join(dir, entry.name);
     if (ignore.length > 0) {
       const rel = relative(rootDir, full).replace(/\\/g, '/');
-      if (micromatch.isMatch(rel, ignore)) continue;
+      if (ignore.some(pattern => posix.matchesGlob(rel, pattern))) continue;
     }
     if (entry.isDirectory()) yield* walkDir(full, rootDir, ignore);
     else if (entry.isFile()) yield full;

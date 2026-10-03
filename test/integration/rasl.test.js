@@ -420,6 +420,31 @@ describe('RASL routes', () => {
     });
   });
 
+  // ── Static root ignore patterns ───────────────────────────────────────────
+
+  describe('static root ignore patterns', () => {
+    it('skips files matching ignore globs', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'rasl-ignore-'));
+      try {
+        mkdirSync(join(dir, 'sub'));
+        writeFileSync(join(dir, 'keep.txt'), 'keep');
+        writeFileSync(join(dir, 'a.log'), 'root log');
+        writeFileSync(join(dir, 'sub', 'b.log'), 'nested log');
+        writeFileSync(join(dir, '.DS_Store'), 'junk');
+
+        await indexStaticRoot(dir, store, { generateMasl: false, ignore: ['**/*.log', '.DS_Store'] });
+
+        const has = async (text) => !!(await store.getContentMeta(await computeDataCid(Buffer.from(text))));
+        expect(await has('keep')).toBe(true);
+        expect(await has('root log')).toBe(false);
+        expect(await has('nested log')).toBe(false);
+        expect(await has('junk')).toBe(false);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  });
+
   // ── Static root with generateMasl: false ──────────────────────────────────
   // Files are indexed as plain blobs (accessible by CID) but no MASL is built.
 
