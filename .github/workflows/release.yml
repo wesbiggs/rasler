@@ -1,14 +1,18 @@
 name: Release
 
+# A tag is the only thing that publishes. The order below is deliberate: everything
+# that can fail cheaply runs before anything reaches npm, and the GitHub release
+# comes last -- a version can only be un-published for 72 hours, so announcing a
+# release nobody can install is the wrong order to fail in.
 on:
   push:
     tags: ['v*.*.*']
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,11 +21,81 @@ jobs:
           node-version-file: .tool-versions
           cache: npm
       - run: npm ci
+
+      # npm resolves the version from package.json and ignores the tag entirely, so a
+      # tag that disagrees with it would publish under a number nobody tagged. Catch
+      # that here, before the publish job can act on it.
+      - name: The tag must match the version in package.json
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg=$(node -p "require('./package.json').version")
+          echo "tag=$tag  package.json=$pkg"
+          test "$tag" = "$pkg" || { echo "::error::tag $tag != package.json $pkg"; exit 1; }
+
       - run: npm test
+      - run: npm audit --omit=dev --audit-level=high
+
+      # Pack here and publish this exact tarball below, so the artifact that was
+      # tested is the artifact that reaches npm rather than a second, re-resolved one.
+      - run: npm pack --pack-destination dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-tarball
+          path: dist/
+
+  publish-npm:
+    needs: build
+    runs-on: ubuntu-latest
+    # Naming an environment is what lets the repo require a manual approval before
+    # anything reaches npm, without changing this workflow.
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/rasler
+    permissions:
+      id-token: write # the OIDC token Trusted Publishing exchanges; no npm token in secrets
+    steps:
+      - uses: actions/checkout@v4 # for .tool-versions, so Node is pinned in one place
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .tool-versions
+          registry-url: https://registry.npmjs.org
+
+      # Trusted Publishing arrived in npm 11.5.1. Node 24 ships a newer npm than that,
+      # so this is a guard against .tool-versions moving backwards, not a live concern.
+      - name: Trusted Publishing needs npm 11.5.1 or newer
+        run: |
+          have=$(npm --version)
+          echo "npm $have"
+          test "$(printf '11.5.1\n%s\n' "$have" | sort -V | head -1)" = "11.5.1" \
+            || { echo "::error::npm $have is older than 11.5.1"; exit 1; }
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-tarball
+          path: dist/
+
+      # No NODE_AUTH_TOKEN: the OIDC token above is exchanged for a short-lived
+      # registry credential, and npm attaches build provenance on its own.
+      - name: Publish to npm
+        run: npm publish dist/*.tgz
+
+  github-release:
+    # Last, and only once npm has accepted the package.
+    needs: publish-npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # creating the release is the one thing here that writes
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-tarball
+          path: dist/
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           flags=""
           case "$GITHUB_REF_NAME" in *-*) flags="--prerelease" ;; esac
-          gh release create "$GITHUB_REF_NAME" --generate-notes --verify-tag $flags
+          gh release create "$GITHUB_REF_NAME" --generate-notes --verify-tag $flags dist/*.tgz
