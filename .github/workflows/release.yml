@@ -64,14 +64,15 @@ jobs:
           node-version-file: .tool-versions
           registry-url: https://registry.npmjs.org
 
-      # Trusted Publishing arrived in npm 11.5.1. Node 24 ships a newer npm than that,
-      # so this is a guard against .tool-versions moving backwards, not a live concern.
-      - name: Trusted Publishing needs npm 11.5.1 or newer
+      # Staging needs npm 11.15.0 -- a higher bar than Trusted Publishing's own 11.5.1,
+      # and the reason .tool-versions pins Node 24.22 (npm 11.19) rather than 24.15
+      # (npm 11.12). This is a guard against that pin moving backwards.
+      - name: Staged publishing needs npm 11.15.0 or newer
         run: |
           have=$(npm --version)
           echo "npm $have"
-          test "$(printf '11.5.1\n%s\n' "$have" | sort -V | head -1)" = "11.5.1" \
-            || { echo "::error::npm $have is older than 11.5.1"; exit 1; }
+          test "$(printf '11.15.0\n%s\n' "$have" | sort -V | head -1)" = "11.15.0" \
+            || { echo "::error::npm $have is older than 11.15.0"; exit 1; }
 
       - uses: actions/download-artifact@v4
         with:
@@ -81,17 +82,46 @@ jobs:
       # No NODE_AUTH_TOKEN: the OIDC token above is exchanged for a short-lived
       # registry credential, and npm attaches build provenance on its own.
       #
+      # `stage publish` rather than `publish`: a trusted publisher created after
+      # 2026-09-03 allows staging by default and direct publishing only where that was
+      # granted explicitly, so plain `npm publish` comes back 403 "OIDC permission
+      # denied for this action". Staging leaves the version in the registry but not
+      # public until a maintainer approves it with 2FA, which OIDC cannot do -- that
+      # step is manual on purpose and the summary below says how.
+      #
+      # A tarball argument is accepted here even though only `npm publish` documents
+      # it; without one the command packs the working directory instead.
+      #
       # The leading ./ is load-bearing: npm reads a bare `dist/x.tgz` as the GitHub
-      # shorthand owner/repo and tries to git-clone it rather than publish the file.
-      - name: Publish to npm
+      # shorthand owner/repo and tries to git-clone it rather than read the file.
+      - name: Stage the release on npm
         run: |
           tarballs=(./dist/*.tgz)
           test "${#tarballs[@]}" -eq 1 \
             || { echo "::error::expected one tarball in dist/, found ${#tarballs[@]}"; exit 1; }
-          npm publish "${tarballs[0]}"
+          npm stage publish "${tarballs[0]}"
+
+      - name: Say what is still needed to make it live
+        run: |
+          {
+            echo "### \`$GITHUB_REF_NAME\` is staged, not published"
+            echo
+            echo "Approve it to go live (needs 2FA; OIDC is not allowed to approve):"
+            echo
+            echo '```'
+            echo 'npm stage list rasler'
+            echo 'npm stage approve <stage-id>'
+            echo '```'
+            echo
+            echo "Or npmjs.com -> rasler -> **Staged Packages** -> Approve."
+            echo
+            echo "The GitHub release is held as a draft until then."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   github-release:
-    # Last, and only once npm has accepted the package.
+    # Last, and only once npm has accepted the package -- as a draft, because a staged
+    # version is not installable until it is approved. Publishing the draft is the
+    # other half of that same approval.
     needs: publish-npm
     runs-on: ubuntu-latest
     permissions:
@@ -108,4 +138,4 @@ jobs:
         run: |
           flags=""
           case "$GITHUB_REF_NAME" in *-*) flags="--prerelease" ;; esac
-          gh release create "$GITHUB_REF_NAME" --generate-notes --verify-tag $flags dist/*.tgz
+          gh release create "$GITHUB_REF_NAME" --draft --generate-notes --verify-tag $flags dist/*.tgz
