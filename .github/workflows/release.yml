@@ -80,8 +80,15 @@ jobs:
 
       # No NODE_AUTH_TOKEN: the OIDC token above is exchanged for a short-lived
       # registry credential, and npm attaches build provenance on its own.
+      #
+      # The leading ./ is load-bearing: npm reads a bare `dist/x.tgz` as the GitHub
+      # shorthand owner/repo and tries to git-clone it rather than publish the file.
       - name: Publish to npm
-        run: npm publish dist/*.tgz
+        run: |
+          tarballs=(./dist/*.tgz)
+          test "${#tarballs[@]}" -eq 1 \
+            || { echo "::error::expected one tarball in dist/, found ${#tarballs[@]}"; exit 1; }
+          npm publish "${tarballs[0]}"
 
   github-release:
     # Last, and only once npm has accepted the package.
