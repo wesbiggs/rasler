@@ -37,7 +37,10 @@ jobs:
 
       # Pack here and publish this exact tarball below, so the artifact that was
       # tested is the artifact that reaches npm rather than a second, re-resolved one.
-      - run: npm pack --pack-destination dist
+      - name: Pack the tarball that will be published
+        run: |
+          mkdir -p dist # npm 11.12 errors on a missing --pack-destination instead of creating it
+          npm pack --pack-destination dist
 
       - uses: actions/upload-artifact@v4
         with:
